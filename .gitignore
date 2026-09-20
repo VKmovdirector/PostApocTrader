@@ -1,0 +1,5 @@
+.DS_Store
+*.zip
+# rejected brush-art experiment (build 12) - kept locally only
+art-src/
+v12-build12.html
