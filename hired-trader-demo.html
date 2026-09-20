@@ -162,16 +162,16 @@ const CATS={
 };
 const CATKEYS=Object.keys(CATS);
 const ITEMS=[
-  {id:'pipegun', n:'Pipe Gun',     cat:'guns', v:26},
+  {id:'pipegun', n:'Zip Gun',      cat:'guns', v:26},
   {id:'shells',  n:'Shotshells',   cat:'guns', v:15},
   {id:'knife',   n:'Trench Knife', cat:'guns', v:19},
-  {id:'stimpak', n:'Stimpak',      cat:'meds', v:32},
+  {id:'stimpak', n:'Mend Shot',    cat:'meds', v:32},
   {id:'bandage', n:'Field Wrap',   cat:'meds', v:13},
-  {id:'radaway', n:'Rad-Purge',    cat:'meds', v:27},
+  {id:'radaway', n:'Iodine Tabs',  cat:'meds', v:27},
   {id:'beans',   n:'Canned Beans', cat:'food', v:11},
-  {id:'mutfruit',n:'Mutfruit',     cat:'food', v:9},
+  {id:'mutfruit',n:'Ash Plum',     cat:'food', v:9},
   {id:'water',   n:'Clean Water',  cat:'food', v:21},
-  {id:'cell',    n:'Fusion Cell',  cat:'tech', v:29},
+  {id:'cell',    n:'Power Cell',   cat:'tech', v:29},
   {id:'board',   n:'Circuit Board',cat:'tech', v:17},
   {id:'terminal',n:'Old Terminal', cat:'tech', v:36},
   {id:'scrap',   n:'Scrap Plate',  cat:'junk', v:7},
@@ -413,7 +413,7 @@ function shade(hex,amt){
    ================================================================ */
 const TYPES=[
  // --- tier 1, from the first day ---
- {id:'wastelander',n:'WASTELANDER',tier:1,pat:26,pay:1.00,wants:['food','meds','junk','guns','tech'],
+ {id:'wastelander',n:'WANDERER',tier:1,pat:26,pay:1.00,wants:['food','meds','junk','guns','tech'],
   cfg:{coat:'#a8905f',pants:'#4a3a2a',hat:'cap',hatCol:'#6b5a3a',face:'bandana',bandCol:'#8a7a52',props:['rifle']},
   hello:['Trade?','Long walk in. What have you got?','Anything fresh?'],bye:['Forget it.','Waste of my time.']},
  {id:'oldman',n:'OLD MAN',tier:1,pat:32,pay:0.85,wants:['food','meds'],
@@ -421,7 +421,7 @@ const TYPES=[
   hello:['Easy now, son.','Been walkin\' since the bombs.','Somethin\' soft for old teeth.'],bye:['Bah.','Young folk.']},
  {id:'child',n:'CHILD',tier:1,pat:28,pay:0.80,wants:['food','junk'],
   cfg:{build:'small',coat:'#d8c84a',pants:'#7a6a2a',hat:'hood',hatCol:'#d8c84a',face:'goggles',skin:'#d8b48c'},
-  hello:['Mum said to get it.','Please? I got caps.','Hi mister!'],bye:['You\'re mean.','I\'m telling.']},
+  hello:['Mum said to get it.','Please? I got chits.','Hi mister!'],bye:['You\'re mean.','I\'m telling.']},
  {id:'scavenger',n:'SCAVENGER',tier:1,pat:20,pay:1.25,wants:['tech','junk','guns'],
   cfg:{coat:'#8a7a52',pants:'#3f382c',hat:'brim',hatCol:'#3a352c',face:'eyes',props:['rifleback','backpack']},
   hello:['Found anything good?','Quick trade.','Clock\'s running.'],bye:['Too slow.','Gone.']},
@@ -475,7 +475,7 @@ const TYPES=[
  {id:'ratking',n:'RAT KING',tier:3,pat:18,pay:1.35,wants:['food','junk'],
   cfg:{build:'hunch',skin:'#6b4a3a',coat:'#3a2f2a',pants:'#2f261f',face:'snout',props:['rats']},
   hello:['We are many. We are hungry.','The nest needs.','Wedeal. Wedeal.'],bye:['We bite.','Manysqueak. Bad trade.']},
- {id:'glower',n:'GLOWER',tier:3,pat:20,pay:1.40,wants:['tech','meds'],
+ {id:'glower',n:'SHINER',tier:3,pat:20,pay:1.40,wants:['tech','meds'],
   cfg:{coat:'#d8c84a',pants:'#8a7a2a',hat:'hood',hatCol:'#d8c84a',face:'dark',eyeCol:'#c8e83a',props:['glow']},
   hello:['I burn quietly.','Do not touch me. Just trade.','It hums, doesn\'t it.'],bye:['You glow less than I hoped.','Cold.']}
 ];
@@ -1883,7 +1883,7 @@ function cursorSpr(col){
 }
 /* one dial: the hand you can afford */
 const LEVELS=[
- {lvl:1,n:'GREENHORN',who:'PIP',  v:360,r:0.62,s:0.68,aim:0.45,bonus:0,   wage:100, col:'#8a9aa6',
+ {lvl:1,n:'GREENHORN',who:'KIT',  v:360,r:0.62,s:0.68,aim:0.45,bonus:0,   wage:100, col:'#8a9aa6',
   note:'slow feet · shelves things wrong · drowns in a rush'},
  {lvl:2,n:'DRIFTER',  who:'MOSS', v:480,r:0.48,s:0.80,aim:0.62,bonus:0,   wage:160,col:'#7fb0c8',
   note:'keeps up on a quiet day · still misfiles'},

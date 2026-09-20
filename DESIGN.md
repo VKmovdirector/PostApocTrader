@@ -1,8 +1,14 @@
 # RUST & RATIONS — design notes (build 11)
 
 A trading-post game. You run the only stall in a dust-blown town. Caravans dump
-mixed salvage on your counter, wastelanders queue at the window, and rent is due
+mixed salvage on your counter, wanderers queue at the window, and rent is due
 every night.
+
+**Naming.** Nothing in the game borrows another franchise's vocabulary. The currency is
+**chits** (shown as `c`), the everyday customer is a **Wanderer**, the glowing mutant is a
+**Shiner**, and the goods are Mend Shot, Iodine Tabs, Ash Plum, Power Cell and Zip Gun.
+Internal ids (`stimpak`, `radaway`, `mutfruit`, `cell`, `pipegun`, `glower`, `S.caps`) are
+unchanged so saves and test scripts keep working — only what the player reads was renamed.
 
 Single file: `index.html`. Canvas 2D, design resolution 1280×760, scaled and
 letterboxed to the window. No dependencies. The only external request is the
@@ -66,7 +72,7 @@ the counter, misfiled, or scrapped at the barrel for 25 % of value. Click an
 
 ## 2b. Bulk orders (build 8, from day 3)
 
-**15 %** of customers from day 3 arrive with a **BULK ORDER** — `3 × MEDS`, or `4 × Stimpak`
+**15 %** of customers from day 3 arrive with a **BULK ORDER** — `3 × MEDS`, or `4 × Mend Shot`
 for the exact-item variant (sizes 2–4, weighted to 3). Their card is edged in amber and they
 carry 45 % more patience, because filling an order takes time.
 
@@ -119,9 +125,9 @@ price = round( 0.5            (build 7: every sale pays half)
 
 | ARMS | MEDS | CHOW | TECH | JUNK |
 |---|---|---|---|---|
-| Pipe Gun 26 | Stimpak 32 | Clean Water 21 | Old Terminal 36 | Duct Tape 10 |
-| Trench Knife 19 | Rad-Purge 27 | Canned Beans 11 | Fusion Cell 29 | Scrap Plate 7 |
-| Shotshells 15 | Field Wrap 13 | Mutfruit 9 | Circuit Board 17 | Tin Cans 5 |
+| Zip Gun 26 | Mend Shot 32 | Clean Water 21 | Old Terminal 36 | Duct Tape 10 |
+| Trench Knife 19 | Iodine Tabs 27 | Canned Beans 11 | Power Cell 29 | Scrap Plate 7 |
+| Shotshells 15 | Field Wrap 13 | Ash Plum 9 | Circuit Board 17 | Tin Cans 5 |
 
 Categories unlock by day: **day 1 opens ARMS / MEDS / CHOW / TECH**, and JUNK joins on day 2.
 The stall starts with **four shelf rows**, one per opening category, so day 1 is a clean fit and
@@ -134,7 +140,7 @@ Tier 1 walks in from day 1, tier 2 from day 3, tier 3 from day 5.
 
 | tier | type | patience | pays | wants |
 |---|---|---|---|---|
-| 1 | Wastelander | 26 s | ×1.00 | anything |
+| 1 | Wanderer | 26 s | ×1.00 | anything |
 | 1 | Old Man | 32 s | ×0.85 | chow, meds |
 | 1 | Child | 28 s | ×0.80 | chow, junk |
 | 1 | Scavenger | 20 s | ×1.25 | tech, junk, arms |
@@ -154,7 +160,7 @@ Tier 1 walks in from day 1, tier 2 from day 3, tier 3 from day 5.
 | 3 | Cultist | 22 s | ×1.30 | meds, tech, junk |
 | 3 | Skinner | 15 s | ×1.45 | arms, meds |
 | 3 | Rat King | 18 s | ×1.35 | chow, junk |
-| 3 | Glower | 20 s | ×1.40 | tech, meds |
+| 3 | Shiner | 20 s | ×1.40 | tech, meds |
 
 35 % want a **specific item** (×1.4); the rest want any item from a category. A
 wrong item costs them 10 % patience and bounces back — forgiving on purpose.
@@ -177,7 +183,7 @@ it is 222 against 579 (slow player) to 2113 (fast player) earned. For reference,
 had rent at ~65 % of income and killed an average player by day 6; build 2 at ~45 %;
 build 3 onward lands near 10 %.
 
-**Consequence worth knowing:** caps now outrun their sinks. Every upgrade costs ~1,600
+**Consequence worth knowing:** chits now outrun their sinks. Every upgrade costs ~1,600
 total and every cosmetic ~1,840, so a competent player owns everything by roughly day 9
 and the purse just grows after that. If that starts to feel weightless, the fix is more
 sinks (more cosmetics, a stall expansion, town projects) rather than steeper rent.
@@ -224,7 +230,7 @@ the last:
 
 | lvl | who | available | fee | wage | pace | files right | haggles to | perk |
 |---|---|---|---|---|---|---|---|---|
-| 1 | PIP · GREENHORN | day 12 | 450 c | 60 c/day | 180 px/s | 55 % | 40 % | — |
+| 1 | KIT · GREENHORN | day 12 | 450 c | 60 c/day | 180 px/s | 55 % | 40 % | — |
 | 2 | MOSS · DRIFTER | day 15 | 675 c | 110 c/day | 330 | 70 % | 55 % | — |
 | 3 | CASS · HAND | day 18 | 975 c | 170 c/day | 520 | 83 % | 70 % | — |
 | 4 | VEK · RUNNER | day 21 | 1350 c | 230 c/day | 740 | 93 % | 85 % | +10 % on her sales |
@@ -234,8 +240,8 @@ Build 7 made the ladder start much lower — a greenhorn now moves at 180 px/s (
 pace) and shelves barely half of it correctly — so that each level is a visible improvement
 rather than a small one. Fees went up 50 %; the daily wages did not (see the warning below).
 
-**Standing her down.** The day-intro card carries a toggle: `PIP WORKS TODAY · -60c` or
-`PIP SITS OUT · NO WAGE`. Standing her down pays no wage, keeps her off the floor, and
+**Standing her down.** The day-intro card carries a toggle: `KIT WORKS TODAY · -60c` or
+`KIT SITS OUT · NO WAGE`. Standing her down pays no wage, keeps her off the floor, and
 closes the fourth customer window — `queueRows()` follows whether she is actually working,
 not whether she is on the books.
 
@@ -308,7 +314,7 @@ day 20), and the purse runs away — 11,800 to 13,800 c by day 24 with nothing t
 shop stops being a decision about a third of the way into a long run. Fixes worth considering, in
 rough order of effort: stretch the perk prices so the last ranks cost multiples of the first;
 gate perks by day the way the hand is gated; or add a recurring sink (restocking the caravan,
-repairs, bribes) so caps drain as well as fill.
+repairs, bribes) so chits drain as well as fill.
 
 ## 9c. The walkthroughs (build 8)
 
@@ -469,7 +475,7 @@ Audio is a small WebAudio synth (grab, drop, file, coin, angry, caravan horn).
 - Single stall, single town — you take what the caravan brings.
 - Endless: no win state, only a best-day record in `localStorage`
   (`rustrations.best`).
-- Caps still outrun their sinks late, though the drip-fed cosmetics (~2,700 c spread
+- Chits still outrun their sinks late, though the drip-fed cosmetics (~2,700 c spread
   over 20 days) now soak up a lot more of the surplus than build 3 did.
 - The early game is very tight after the 50 % sale cut: a mid-speed player nets ~16 c on
   day 3 and ~37 c on day 8 against upgrades that start at 120 c, so the first purchase is
@@ -512,7 +518,7 @@ day can be watched clean.
 
 | lvl | who | pace | reaction | files right | haggles to | perk | wage |
 |---|---|---|---|---|---|---|---|
-| 1 | PIP · GREENHORN | 360 px/s | 0.62 s | 68 % | 45 % of ceiling | — | 100 c |
+| 1 | KIT · GREENHORN | 360 px/s | 0.62 s | 68 % | 45 % of ceiling | — | 100 c |
 | 2 | MOSS · DRIFTER | 480 | 0.48 | 80 % | 62 % | — | 160 c |
 | 3 | CASS · HAND | 620 | 0.37 | 89 % | 78 % | — | 220 c |
 | 4 | VEK · RUNNER | 790 | 0.27 | 95 % | 88 % | +10 % on her sales | 280 c |
@@ -566,7 +572,7 @@ sale; it worked (+67 % on its own) but was set aside. The code is still in the f
 
 ## The mechanic
 
-**15 %** of customers arrive with a **BULK ORDER** — `3 × MEDS`, or `4 × Stimpak` for the
+**15 %** of customers arrive with a **BULK ORDER** — `3 × MEDS`, or `4 × Mend Shot` for the
 exact-item variant (sizes 2–4, weighted to 3). Their card is edged in amber and they carry
 45 % more patience, because filling an order takes time.
 
@@ -644,7 +650,7 @@ in* rather than *which rotation am I on*.
 |---|---|---|---|---|---|
 | 1 | **COUNTER SWEEP** | files every counter item that has a free matching shelf slot, instantly | 30 s | 240 c | the counter is jammed |
 | 2 | **STEADY HANDS** | refills every waiting customer's patience and freezes it for 3 s | 45 s | 280 c | three people are about to walk |
-| 3 | **HARD PATTER** | 10 s of +50 % prices; the haggle bar fills 3× faster and cannot snap | 50 s | 320 c | you need caps now |
+| 3 | **HARD PATTER** | 10 s of +50 % prices; the haggle bar fills 3× faster and cannot snap | 50 s | 320 c | you need chits now |
 | 4 | **THE BACK ROOM** | fills your emptiest shelf row with four items of its category | 60 s | 300 c | the shelves are bare |
 
 Each one is a single keystroke with a visible cost elsewhere: Sweep spends your filing advantage,
