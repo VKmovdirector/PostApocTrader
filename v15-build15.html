@@ -15,7 +15,7 @@
 <script>
 "use strict";
 /* ================================================================
-   RUST & RATIONS  -  build 18 (pixel art, workbench, map, achievements, transport, town hub)
+   RUST & RATIONS  -  build 15 (pixel art, workbench, map, achievements)
    A wasteland trading post. Sort the caravan, serve the wasteland.
    Single file, canvas 2D, design resolution 1280x760.
    ================================================================ */
@@ -290,7 +290,6 @@ const PERK_PX={
  sweep:['........','..k.....','.kk.....','kkkkkkk.','.kk.....','..k.....','........','kkkkkkkk'],
  steady:['kkkkkkkk','.k....k.','..k..k..','...kk...','...kk...','..k..k..','.k....k.','kkkkkkkk'],
  patter:['..kkkk..','.k....k.','k..kk..k','k.k..k.k','k......k','.k....k.','..k.k...','...k....'],
- signal:['...k....','..kk....','..kkk.k.','.kkkkkk.','.kk.kkk.','.kk..kk.','..kkkk..','kkkkkkkk'],
  back: ['kkkkkkkk','k......k','k.kkkk.k','k.k..k.k','k.kkkk.k','k....k.k','k......k','kkkkkkkk']
 };
 const PERK_SPR={};
@@ -731,7 +730,7 @@ const S={
 };
 const UPGRADES=[
   {id:'slot',  n:'WIDER COUNTER',  d:'+1 counter slot',               max:3, cost:[120,175,245]},
-  {id:'sign',  n:'PAINTED SIGN',   d:'+5% on every sale per level',   max:3, cost:[150,400,800]},
+  {id:'sign',  n:'PAINTED SIGN',   d:'+15% on every sale',            max:3, cost:[155,245,350]},
   {id:'coffee',n:'POT OF CHICORY', d:'a little more patience: +2/5/8%',max:3, cost:[145,215,300]},
   {id:'drone', n:'SORTING ROBO-HAND', d:'a rusted arm that files for you every 9s', max:2, cost:[275,400]},
   {id:'tongue',n:'SILVER TONGUE',  d:'haggle faster, higher ceiling', max:2, cost:[215,320]},
@@ -769,20 +768,16 @@ const ACTIVES=[
   why:'for when the shelves are bare'},
  {key:5,id:'hire',  n:'HIRED HAND',     cd:40, cost:2500, col:'#8fd0ee',
   d:'KIT works the stall beside you: files, sells and haggles for a few seconds',
-  why:'for when you need a second pair of hands'},
- {key:6,id:'signal',n:'SIGNAL FIRE',    cd:60, cost:800, col:'#f08a4a',
-  d:'light the beacon: caravans hurry in 10% faster for 20s',
-  why:'for when the shelves are running dry'}
+  why:'for when you need a second pair of hands'}
 ];
-const SIGNAL_BOOST=0.10, SIGNAL_TIME=20;
-S.actOwn=[false,false,false,false,false,false];
-S.actCd=[0,0,0,0,0,0]; S.handT=0; S.signalT=0;
+S.actOwn=[false,false,false,false,false];
+S.actCd=[0,0,0,0,0]; S.handT=0;
 S.steadyT=0; S.patterT=0;
 function actReady(i){ return S.actOwn[i]&&S.actCd[i]<=0&&S.scene==='play'&&!S.paused; }
 function fireActive(i){
   if(!actReady(i)){ if(S.actOwn[i]) Snd.bad(); return; }
   const a=ACTIVES[i];
-  S.actCd[i]=a.cd; achInc('actUsed'); (S.keyFx=S.keyFx||[])[i]=0.16;
+  S.actCd[i]=a.cd; achInc('actUsed');
   Snd.good(); flash(a.col,0.18);
   const rail=perkRailRect(i);
   float(rail.x+rail.w+46,rail.y+14,a.n,a.col,16);
@@ -808,8 +803,6 @@ function fireActive(i){
       const r=custRect(c.row); float(c.x+r.w*0.5,c.y+18,'PATIENCE',a.col,14); } });
   } else if(a.id==='patter'){
     S.patterT=10;
-  } else if(a.id==='signal'){
-    S.signalT=SIGNAL_TIME;
   } else if(a.id==='hire'){
     const hh=hired(); S.handT=hh.dur; S.actCd[i]=a.cd+hh.dur;        /* the cooldown starts when she clocks off */
     const hm=botHome(); BOT.x=hm.x; BOT.y=hm.y; botIdle(0.1);
@@ -943,20 +936,21 @@ function dropTries(){
 }
 
 /* ---------------- difficulty ---------------- */
-/* Four kinds, four shelves, for the whole game. (There used to be a fifth, JUNK, from day two;
-   it is gone - its three goods survive only as the worthless cans the day-1 lesson has you scrap.) */
-const SHOPCATS=['guns','meds','food','tech'];
-function activeCats(){ return SHOPCATS.slice(); }
+function activeCats(){
+  /* the tech line is open from day one; junk joins on day two */
+  if(S.day<=1) return ['guns','meds','food','tech'];
+  return CATKEYS.slice();
+}
 const dayLenFor  = d => 90;
 const rentFor    = d => Math.round(50 + 9*Math.pow(d-1,1.15));
-const custEvery  = d => d===1? 7.0 : Math.max(3.54, 6.6-0.34*(d-1));   /* flat from day 10 */
-const crateEvery = d => Math.max(8.6, 14-0.6*(d-1));                  /* flat from day 10 */
-const crateSize  = d => Math.min(6, 3+Math.floor((d-1)/3));            /* the most a crate can hold that day; each one rolls 3..this */
+const custEvery  = d => d===1? 7.0 : Math.max(2.7, 6.6-0.34*(d-1));
+const crateEvery = d => Math.max(7.5, 14-0.6*(d-1));
+const crateSize  = d => Math.min(6, 3+Math.floor((d-1)/3));
 const CHICORY=[0,0.02,0.05,0.08];
 const patScale   = d => Math.max(0.68, 1-0.035*(d-1)) * (1+CHICORY[S.up.coffee]);
 const tierFor    = d => d<3?1:(d<5?2:3);
 function priceMults(){
-  return { sign:1+0.05*S.up.sign, haggleRate:0.55*(1+0.5*S.up.tongue),
+  return { sign:1+0.15*S.up.sign, haggleRate:0.55*(1+0.5*S.up.tongue),
            haggleMax:0.50+0.25*S.up.tongue };
 }
 
@@ -980,23 +974,6 @@ function flyer(item,x,y,tx,ty,dur,arc,done){
 function say(line){ S.traderLine=line; S.traderLineT=3.2; }
 
 /* ---------------- shelves ---------------- */
-/* A shelf can only be relabelled to a kind that has NO shelf yet - so two shelves can never share a sign
-   and a kind can never be left without one by accident. If a duplicate exists anyway, the click repairs it. */
-function freeLabel(i){
-  const cats=activeCats(), others=S.shelves.filter((sh,k)=>k!==i).map(sh=>sh.cat);
-  const open=cats.filter(c=>others.indexOf(c)<0&&c!==S.shelves[i].cat);
-  if(!open.length) return null;
-  const at=cats.indexOf(S.shelves[i].cat);
-  for(let k=1;k<=cats.length;k++){ const c=cats[(at+k)%cats.length]; if(open.indexOf(c)>=0) return c; }
-  return open[0];
-}
-function fixDupShelves(){
-  const cats=activeCats();
-  S.shelves.forEach((sh,i)=>{
-    const dupe=S.shelves.findIndex(o=>o.cat===sh.cat)!==i;
-    if(dupe&&!sh.slots.some(Boolean)){ const c=freeLabel(i); if(c) sh.cat=c; }
-  });
-}
 function makeShelves(){
   const cats=activeCats(), old=S.shelves;
   S.shelves=[];
@@ -1033,13 +1010,12 @@ function rollItem(){
   if(S.day>10&&x>=0.01&&x<0.06) return rar(it,1); /* 5% rare after day 10 */
   return it;
 }
-/* Only ever one caravan in the yard. big = the half-time load: a double roll in a bigger crate. */
-function spawnCrate(big){
-  const n=big ? ri(3,crateSize(S.day))*2 : ri(3,crateSize(S.day)), items=[];
+function spawnCrate(){
+  const n=crateSize(S.day), items=[];
   for(let i=0;i<n;i++) items.push(rollItem());
   const cb=counterBlock();
-  S.crates.push({x:-170,y:cb.y-(big?14:4),t:0,items:items,state:'in',big:!!big,n:n});
-  Snd.horn(); say(pick(['Caravan\'s in.','More stock. Sort it.','Fresh off the road.']));
+  S.crates.push({x:-150,y:cb.y-4,t:0,items:items,state:'in'});
+  Snd.horn(); say(pick(['Caravan\'s in.','More junk. Sort it.','Fresh off the road.']));
 }
 function deliverItem(it,fx,fy){
   const idx=freeCounterSlot();
@@ -1250,7 +1226,7 @@ function wsPick(x,y){
   for(let i=0;i<S.shelves.length;i++){
     const hr=wsShelfRect(i);
     if(inRect(x,y,{x:hr.x,y:hr.y,w:hr.w,h:22})&&!S.shelves[i].slots.some(s=>s)){
-      const nc=freeLabel(i); if(nc){ S.shelves[i].cat=nc; Snd.ui(); } else Snd.bad(); return;
+      const cats=activeCats(); S.shelves[i].cat=cats[(cats.indexOf(S.shelves[i].cat)+1)%cats.length]; Snd.ui(); return;
     }
     for(let j=0;j<4;j++){ const e=S.shelves[i].slots[j];
       if(e&&inRect(x,y,wsSlotRect(i,j))){ S.wd={item:e.item,from:{k:'shelf',i:i,j:j},x:x,y:y}; S.shelves[i].slots[j]=null; Snd.ui(); return; } }
@@ -1304,7 +1280,6 @@ function wsGlow(p){
   g.fillRect(p.x-3,p.y,3,p.h); g.fillRect(p.x+p.w,p.y,3,p.h); g.globalAlpha=1;
 }
 function drawWorkshop(){
-  fixDupShelves();
   dim(0.82);
   const step=wsStep(), mk=WS.mk, wb=WS.wb, sh=WS.sh;
   /* ---- material market ---- */
@@ -1391,7 +1366,7 @@ function drawWorkshop(){
     const r=wsShelfRect(i), cat=CATS[s.cat], good=S.wd&&S.wd.item.cat===s.cat, empty=!s.slots.some(e=>e);
     g.fillStyle=S.wd?(good?'rgba(127,183,79,0.16)':'rgba(200,80,58,0.10)'):'rgba(0,0,0,0.25)'; g.fillRect(r.x,r.y,r.w,22);
     blit(catBadge(s.cat),r.x+4,r.y+5,1.5); txt(cat.name,r.x+22,r.y+11,14,cat.col);
-    if(empty&&freeLabel(i)) txt('click to relabel',r.x+r.w-6,r.y+11,10,C.dimmer,'right','normal');
+    if(empty) txt('click to relabel',r.x+r.w-6,r.y+11,10,C.dimmer,'right','normal');
     for(let j=0;j<4;j++){ const q=wsSlotRect(i,j), e=s.slots[j];
       wsCell(q,S.wd&&!e&&inRect(MX,MY,q));
       if(e){ rarFrame(q,e.item); drawItem(e.item,q.x+q.w/2,q.y+q.h/2-8,3);
@@ -1404,10 +1379,10 @@ function drawWorkshop(){
   if(!WT.on){ txt(guide[0],sh.x+sh.w/2,sh.y+578,13,C.gold,'center'); txt(guide[1],sh.x+sh.w/2,sh.y+594,10,C.ink,'center','normal'); }
   txt('rent '+(CRAFT.demo?'tonight ':'tomorrow ')+rentFor(effDay())+'c  ·  spent on materials '+S.cr.daySpent+'c',sh.x+sh.w/2,sh.y+610,10,C.dim,'center','normal');
   const has=wsStocked()||S.tray.some(x=>x);
-  button(sh.x+sh.w/2-150,sh.y+sh.h-56,300,46,CRAFT.demo?(has?'OPEN THE STALL':'OPEN WITH NOTHING TO SELL'):'BACK TO TOWN',
+  button(sh.x+sh.w/2-150,sh.y+sh.h-56,300,46,CRAFT.demo?(has?'OPEN THE STALL':'OPEN WITH NOTHING TO SELL'):'BACK TO THE FIXER',
          ()=>{ if(S.wd){ wsPut(S.wd.from,S.wd.item); S.wd=null; } WT.on=false; WT.done=true;      /* one lesson, one starter kit */
                if(CRAFT.demo){ S.back=S.tray.filter(x=>x); S.tray.fill(null); S.backT=2.5; S.scene='play'; S.sceneT=0; say(pick(['Another day.','Let\'s trade.','Dust\'s up. Open.'])); }
-               else toHub(); },
+               else { S.scene='shop'; S.sceneT=0; } },
          (has||!CRAFT.demo)?C.gold:C.dimmer,15);
   if(WT.on) drawWorkTut(); else
   wsGlow(step===1?mk:step===2?{x:wb.x+8,y:wb.y+36,w:wb.w-16,h:266}:step===3?sh:{x:sh.x+sh.w/2-150,y:sh.y+sh.h-56,w:300,h:46});
@@ -1536,7 +1511,7 @@ const ACH=[
  /* the fixer */
  {id:'perk1',   n:'FIRST FIX',         d:'Buy anything from the Fixer.',              t:()=>n0('perks')>=1},
  {id:'passive', n:'FULLY FIXED',       d:'Max every passive perk in one run.',        t:()=>n0('allPassive')>=1},
- {id:'actives', n:'EVERY TRICK',       d:'Own every active perk in one run.',         t:()=>n0('allActive')>=1},
+ {id:'actives', n:'FIVE FINGERS',      d:'Own all five active perks in one run.',     t:()=>n0('allActive')>=1},
  {id:'hired',   n:'HELP WANTED',       d:'Hire KIT.',                                 t:()=>n0('hired')>=1},
  {id:'act50',   n:'BUTTON MASHER',     d:'Fire active perks 50 times.',               t:()=>n0('actUsed')>=50},
  {id:'look',    n:'NEW COAT',          d:'Buy something for your look or stall.',     t:()=>n0('looks')>=1},
@@ -1655,8 +1630,6 @@ function drawMap(){
   txt('THE BARRENS',W/2,34,22,C.gold,'center');
   txt('five towns, one road  ·  only Dustwell is open to you so far',W/2,56,10,C.dim,'center','normal');
   txt('N',100,52,12,'#2a1f14','center');
-  { const rc=(S.rig?rigCount():0), ok=S.rig&&rigDone(); plate(W-330,20,166,40,'#1a1410',ok?C.gold:'#5c4a37'); txt('STRIDER '+rc+'/'+RIG.length,W-247,40,12,ok?C.gold:C.dim,'center');
-    if(ok&&Math.sin(S.t*5)>-0.3){ const a=TOWNS[0], b=TOWNS[1]; g.strokeStyle=C.gold; g.lineWidth=4; g.setLineDash([14,10]); g.beginPath(); g.moveTo(a.x*4,a.y*4); g.lineTo(b.x*4,b.y*4); g.stroke(); g.setLineDash([]); } }
   button(W-150,20,110,40,'BACK',()=>closePage(),C.gold,14);
   let hov=null;
   TOWNS.forEach(tn=>{
@@ -1670,105 +1643,11 @@ function drawMap(){
   const tn=hov||TOWNS[0], bw=460, bx=24, by=H-150;
   plate(bx,by,bw,126,'#1a1410',hov?C.gold:'#6b5540');
   txt(tn.n,bx+16,by+22,16,C.gold);
-  { const reach=!tn.home&&tn.id==='saltpan'&&S.rig&&rigDone();
-    txt(tn.home?'YOU ARE HERE':(reach?'THE STRIDER CAN REACH IT · LATER BUILD':'THE ROAD IS NOT OPEN YET'),bx+bw-16,by+22,10,tn.home?C.green:(reach?C.gold:C.dimmer),'right'); }
+  txt(tn.home?'YOU ARE HERE':'THE ROAD IS NOT OPEN YET',bx+bw-16,by+22,10,tn.home?C.green:C.dimmer,'right');
   txt(tn.road,bx+16,by+42,10,C.dim,'left','normal');
   wrapText(tn.d,bx+16,by+64,bw-32,15,11,C.ink);
   txt('buys: '+tn.wants,bx+16,by+110,10,'#8fd0ee','left','normal');
   if(!hov) txt('point at a town',bx+bw-16,by+110,9,C.dimmer,'right','normal');
-}
-
-/* ================================================================
-   TRANSPORT  -  the yard behind the Fixer. Four parts build THE STRIDER,
-   a six-legged walker, and the Strider is how you leave Dustwell.
-   (Leaving is not built yet: the other towns are still only on the map.)
-   ================================================================ */
-const RIG=[
- {id:'engine',n:'TURBINE ENGINE', cost:3000, d:'Pulled from a grounded flyer. Drinks anything that burns.'},
- {id:'legs',  n:'HYDRAULIC LEGS', cost:4000, d:'Six of them, all from different machines. It sits on blocks until they go on.'},
- {id:'gun',   n:'ROOF GUN',       cost:2500, d:'Nobody crosses Cinder Gap unarmed. Nobody who arrives, anyway.'},
- {id:'hold',  n:'CARGO HOLD',     cost:2000, d:'An armoured bay on its back. No point walking nine days to arrive empty.'}
-];
-function rigCount(){ return RIG.filter(p=>S.rig&&S.rig[p.id]).length; }
-function rigDone(){ return rigCount()===RIG.length; }
-function buyRig(p){
-  if(S.rig[p.id]||S.caps<p.cost){ Snd.bad(); return; }
-  S.caps-=p.cost; S.rig[p.id]=true; Snd.coin(6); flash('#8fd0ee',0.22); shake(5);
-  if(rigDone()){ S.banner=null; flash(C.gold,0.35); Snd.good(); }
-}
-const RIG_CACHE={};
-function striderCanvas(){
-  const key=RIG.map(p=>S.rig[p.id]?1:0).join('');
-  if(RIG_CACHE[key]) return RIG_CACHE[key];
-  const Wc=176,Hc=100, c=makeCanvas(Wc,Hc), X=c.getContext('2d');
-  const layer=(have,fn)=>{            /* a part you own is solid; one you do not is a faint blueprint */
-    const t=makeCanvas(Wc,Hc), x=t.getContext('2d');
-    const px=(a,b,w,h,col)=>{ x.fillStyle=have?col:'#8fd0ee'; x.fillRect(Math.round(a),Math.round(b),Math.round(w),Math.round(h)); };
-    const ln=(x0,y0,x1,y1,th,col)=>{ const n=Math.max(Math.abs(x1-x0),Math.abs(y1-y0)); for(let i=0;i<=n;i++) px(lerp(x0,x1,i/n)-th/2,lerp(y0,y1,i/n)-th/2,th,th,col); };
-    fn(px,ln); X.globalAlpha=have?1:0.2; X.drawImage(t,0,0); X.globalAlpha=1;
-  };
-  const R='#7a5438', RH='#9a7048', RD='#54382a', M='#5a5a58', MH='#8a8a84', MD='#3a3a3a', K='#1a1410';
-  /* far legs first, so the hull sits in front of them */
-  layer(S.rig.legs,(px,ln)=>{ [[70,56,88],[92,96,98],[114,134,146]].forEach(l=>{ ln(l[0],64,l[1],52,3,MD); ln(l[1],52,l[2],88,3,MD); px(l[2]-3,88,7,2,K); }); });
-  /* yard blocks while it cannot stand */
-  if(!S.rig.legs) layer(true,(px)=>{ [[58,78],[108,78]].forEach(b=>{ px(b[0],b[1],16,5,'#6b4a2a'); px(b[0]+2,b[1]+5,12,5,'#5a3f28'); px(b[0],b[1]+10,16,4,'#6b4a2a'); px(b[0],b[1],16,1,'#8a6438'); }); });
-  /* hull + cockpit: always there, this is the wreck the Fixer dragged in */
-  layer(true,(px)=>{
-    px(52,50,68,4,RH); px(48,54,76,18,R); px(52,72,68,4,RD); px(56,76,60,2,K);
-    for(let i=0;i<7;i++) px(54+i*10,56,1,14,RD);
-    for(let i=0;i<8;i++) px(51+i*9,53,2,2,MH);
-    px(118,44,20,6,RH); px(116,50,26,20,R); px(120,70,20,4,RD);
-    px(124,52,14,10,K); px(125,53,12,8,rigDone()?'#f0c060':'#2a3a44'); px(125,53,12,2,rigDone()?'#fff0b0':'#3f5664');
-    px(140,60,4,6,M); px(144,62,3,2,MH);                       /* headlamp */
-    px(64,60,10,7,K); px(65,61,8,5,'#3a2a1c');                  /* hatch */
-  });
-  layer(S.rig.hold,(px)=>{ px(54,34,46,16,'#5a4a3a'); px(54,34,46,2,'#7a6650'); px(54,48,46,2,'#3a2e24');
-    [62,76,90].forEach(sx=>px(sx,34,2,16,'#2a2018')); px(58,28,12,6,'#8a6a3a'); px(72,26,14,8,'#6b5a3a'); px(88,29,9,5,'#8a6a3a'); px(72,26,14,1,'#a8865a'); });
-  layer(S.rig.engine,(px)=>{ px(30,52,20,20,M); px(30,52,20,2,MH); px(30,70,20,2,MD); px(26,58,4,10,MD);
-    for(let i=0;i<4;i++) px(33+i*4,56,2,12,MD);
-    px(34,28,5,24,MD); px(42,32,5,20,MD); px(33,26,7,3,MH); px(41,30,7,3,MH); px(35,30,1,20,MH); px(43,34,1,16,MH); px(46,60,6,4,RD); });
-  layer(S.rig.gun,(px)=>{ px(100,40,16,10,M); px(102,36,12,4,MH); px(100,48,16,2,MD); px(116,41,26,3,MD); px(116,41,26,1,MH); px(140,40,4,5,K); px(106,42,4,4,K); });
-  /* near legs last */
-  layer(S.rig.legs,(px,ln)=>{ [[62,44,30],[84,84,84],[106,126,142]].forEach((l,i)=>{ ln(l[0],66,l[1],46,4,M); ln(l[1],46,l[2],90,4,M); ln(l[0],65,l[1],45,1,MH);
-      px(l[1]-3,43,6,6,MH); px(l[1]-2,44,4,4,K); px(l[0]-3,63,6,6,RD); px(l[2]-5,90,10,3,K); px(l[2]-5,90,10,1,MH); }); });
-  return (RIG_CACHE[key]=c);
-}
-function drawTransport(){
-  dim(0.86);
-  const px0=40, py0=76, pw=W-80, ph=H-100;
-  plate(px0,py0,pw,ph,'#1a1410','#6b5540','#8a6f50');
-  txt('TRANSPORT',px0+28,py0+34,26,C.gold);
-  txt('the yard behind the Fixer  ·  purse '+S.caps+'c',px0+28,py0+62,12,C.dim,'left','normal');
-  button(px0+pw-150,py0+18,120,38,'BACK',()=>toHub(),C.gold,13);
-  /* the machine */
-  const vx=px0+24, vy=py0+92, vw=704, vh=440;
-  g.fillStyle='#120e0b'; g.fillRect(vx,vy,vw,vh);
-  g.fillStyle='#2a2119'; g.fillRect(vx,vy+vh-84,vw,84); g.fillStyle='#3a2e22'; g.fillRect(vx,vy+vh-84,vw,3);
-  for(let i=0;i<12;i++){ g.fillStyle='#1d1711'; g.fillRect(vx+20+i*58,vy+vh-60+((i*7)%3)*14,30,3); }
-  const done=rigDone(), bob=done?Math.round(Math.sin(S.t*2.2)*3):0, cvs=striderCanvas();
-  g.fillStyle='rgba(0,0,0,0.4)'; g.fillRect(vx+110,vy+vh-74,vw-220,10);
-  g.imageSmoothingEnabled=false;
-  g.drawImage(cvs,vx,vy+22+bob,cvs.width*4,cvs.height*4);
-  if(S.rig.engine){ for(let i=0;i<6;i++){ const k=((S.t*(done?0.9:0.35)+i/6)%1), sx=vx+(i%2?176:144)+Math.sin(k*9+i)*10, sy=vy+22+bob+100-k*110;
-      g.globalAlpha=(1-k)*0.5; g.fillStyle='#8a8378'; const r=6+k*16; g.fillRect(Math.round(sx-r/2),Math.round(sy-r/2),Math.round(r),Math.round(r)); } g.globalAlpha=1; }
-  txt('THE STRIDER',vx+16,vy+20,16,done?C.gold:C.ink);
-  txt(done?'she walks':(rigCount()+' of '+RIG.length+' parts fitted  ·  pale parts are still missing'),vx+vw-16,vy+20,10,done?C.green:C.dim,'right','normal');
-  /* parts */
-  const cx=vx+vw+20, cw=px0+pw-24-cx;
-  RIG.forEach((p,i)=>{
-    const cy=vy+i*98, own=!!S.rig[p.id], can=!own&&S.caps>=p.cost, hov=can&&inRect(MX,MY,{x:cx,y:cy,w:cw,h:90});
-    plate(cx,cy,cw,90,hov?'#33281c':'#211a14',own?'#3a3228':(can?'#8fd0ee':'#5a3a30'));
-    txt(p.n,cx+14,cy+20,13,own?C.dimmer:C.ink);
-    wrapText(p.d,cx+14,cy+40,cw-28,13,9,own?C.dimmer:C.dim);
-    if(own) txt('FITTED',cx+cw-12,cy+76,11,C.green,'right');
-    else { txt(p.cost+'c',cx+cw-12,cy+76,14,can?'#8fd0ee':C.red,'right'); if(can) BTNS.push({x:cx,y:cy,w:cw,h:90,fn:()=>buyRig(p)}); }
-  });
-  const fy=vy+4*98+4;
-  if(done){
-    plate(cx,fy,cw,44,'#2a2012',C.gold);
-    BTNS.push({x:cx,y:fy,w:cw,h:44,fn:()=>openPage('map')});
-    txt('SEE THE ROAD',cx+cw/2,fy+22,14,C.gold,'center');
-  } else wrapText('Fit all four and the Strider can carry the stall out of Dustwell. The road itself opens in a later build.',cx+4,fy+10,cw-8,13,9,C.dimmer);
 }
 
 /* ================================================================
@@ -1925,7 +1804,7 @@ function drawLesson(){
     else if(step===3){ head='HOLD IT OVER HIM TO HAGGLE';
       body='Do not let go straight away. The price climbs while you hold - and his patience burns three times faster.'; }
     else if(step===4){ head='SCRAP WHAT YOU CANNOT SELL';
-      body='Empty tin cans. No shelf takes them and nobody wants them. Hold CONTROL and click them - or drag them to SCRAP IT. A jammed counter spills.'; }
+      body='Tin cans, and no junk shelf today. Hold CONTROL and click them - or drag them to SCRAP IT. A jammed counter spills.'; }
     else { head='THAT IS THE JOB';
       body='Sort the counter, serve the window, squeeze the price. Rent is due at dusk.'; }
   } else {
@@ -1982,12 +1861,11 @@ function drawLesson(){
    ================================================================ */
 function startRun(){
   S.day=1; S.caps=40; S.maxCombo=0; S.rows=4; S.cslots=5; S.history=[]; S.hire={lvl:0,on:true};
-  S.actOwn=[false,false,false,false,false,false]; S.actCd=[0,0,0,0,0,0]; S.steadyT=0; S.patterT=0; S.handT=0; S.signalT=0; S.rig={}; S.counter=[]; S.scrapN=0;
+  S.actOwn=[false,false,false,false,false]; S.actCd=[0,0,0,0,0]; S.steadyT=0; S.patterT=0; S.handT=0; S.counter=[]; S.scrapN=0;
   TUT.done={};
   craftReset();
   UPGRADES.forEach(u=>S.up[u.id]=0);
   S.shelves=[]; makeShelves(); startDay();
-  S.fresh=true; S.scene='hub'; S.sceneT=0;          /* day 1 starts from the town page like every other */
 }
 function startDay(){
   { const keep=(S.counter||[]).filter(e=>e); keep.forEach(e=>{ e.arriving=0; e.anim=0; });
@@ -1999,8 +1877,7 @@ function startDay(){
   S.dayTime=0; S.dayLen=dayLenFor(S.day); S.earned=0; S.sold=0; S.angry=0; S.spilled=0;
   S.combo=0; S.closing=false; S.overtime=0;
   S.catEarn={}; S.dayCombo=0; S.bulkSold=0; selClear();
-  S.actCd=[0,0,0,0,0,0]; S.steadyT=0; S.patterT=0; S.handT=0; S.signalT=0;
-  S.crateDue=0; S.bigDue=false; S.keyFx=[];
+  S.actCd=[0,0,0,0,0]; S.steadyT=0; S.patterT=0; S.handT=0;
   S.nextCrate=1.4; S.nextCust=S.day===1?5.0:2.6; S.droneT=9;
   S.rushDone=false; S.rushQueue=0; S.rushT=0; S.banner=null;
   botReset();
@@ -2051,11 +1928,9 @@ function tick(dt){
   dt=Math.min(dt,0.05);
   S.t+=dt; S.sceneT+=dt;
   S.shake=Math.max(0,S.shake-dt*28);
-  for(let i=0;i<6;i++) if(S.actCd[i]>0) S.actCd[i]=Math.max(0,S.actCd[i]-dt);
+  for(let i=0;i<5;i++) if(S.actCd[i]>0) S.actCd[i]=Math.max(0,S.actCd[i]-dt);
   S.steadyT=Math.max(0,S.steadyT-dt);
   S.patterT=Math.max(0,S.patterT-dt);
-  if(S.keyFx) for(let k=0;k<S.keyFx.length;k++) if(S.keyFx[k]>0) S.keyFx[k]-=dt;
-  if(S.scene==='play'&&!S.paused) S.signalT=Math.max(0,S.signalT-dt);
   if(S.handT>0&&S.scene==='play'&&!S.paused){ S.handT-=dt; if(S.handT<=0){ S.handT=1e-6; botStrand(); S.handT=0; } }
   S.flash=Math.max(0,S.flash-dt*2.2);
   S.traderLineT=Math.max(0,S.traderLineT-dt);
@@ -2082,25 +1957,21 @@ function tick(dt){
   if(S.dayTime>=S.dayLen && !S.closing){ S.closing=true; say('Shutters in a minute.'); }
 
   if(!S.closing&&!tutFrozen()){
-    S.nextCrate-=dt*(S.signalT>0?1+SIGNAL_BOOST:1);
-    if(S.nextCrate<=0){ S.nextCrate=crateEvery(S.day); S.crateDue=(S.crateDue||0)+1; }     /* due - but it waits its turn */
+    S.nextCrate-=dt;
+    if(S.nextCrate<=0){ S.nextCrate=crateEvery(S.day); spawnCrate(); }
     S.nextCust-=dt;
     if(S.nextCust<=0){ S.nextCust=custEvery(S.day)*rnd(0.8,1.2); spawnCustomer(); }
   } else if(S.closing) S.overtime+=dt;   /* a frozen lesson is not overtime */
 
   if(!S.rushDone && S.dayTime>S.dayLen*0.5 && !S.closing && !tutFrozen()){
     S.rushDone=true; S.rushQueue=2; S.rushT=0.4;
-    S.bigDue=true;
-    S.banner={text:'BIG CARAVAN',sub:'a full load and a crowd',t:0,dur:3.2};
+    spawnCrate(); spawnCrate();
+    S.banner={text:'CARAVAN ROLLS IN',sub:'two crates and a crowd',t:0,dur:3.2};
     flash(C.gold,0.2); shake(6);
   }
   if(S.rushQueue>0){ S.rushT-=dt; if(S.rushT<=0){ S.rushT=1.1; S.rushQueue--; spawnCustomer(); } }
   if(S.banner){ S.banner.t+=dt; if(S.banner.t>S.banner.dur) S.banner=null; }
 
-  if(!S.crates.length&&!S.closing&&!tutFrozen()){
-    if(S.bigDue){ S.bigDue=false; spawnCrate(true); }
-    else if(S.crateDue>0){ S.crateDue--; spawnCrate(false); }
-  }
   for(let i=S.crates.length-1;i>=0;i--){
     const cr=S.crates[i]; cr.t+=dt;
     if(cr.state==='in'){
@@ -2360,9 +2231,9 @@ function tryPick(x,y,shift){
     if(x>=r.x&&x<=r.x+r.w&&y>=r.y&&y<=r.y+SHELF_HEAD){
       const sh=S.shelves[i];
       if(sh.slots.every(s=>!s)){
-        const nc=freeLabel(i);
-        if(nc){ sh.cat=nc; Snd.ui(); float(r.x+r.w/2,r.y+8,'RELABELLED',CATS[sh.cat].col,14); }
-        else { float(r.x+r.w/2,r.y+8,'EVERY KIND HAS A SHELF',C.dim,13); Snd.bad(); }
+        const cats=activeCats();
+        sh.cat=cats[(cats.indexOf(sh.cat)+1)%cats.length];
+        Snd.ui(); float(r.x+r.w/2,r.y+8,'RELABELLED',CATS[sh.cat].col,14);
       } else { float(r.x+r.w/2,r.y+8,'CLEAR THE SHELF FIRST',C.dim,13); Snd.bad(); }
       return true;
     }
@@ -2467,9 +2338,8 @@ window.addEventListener('pointerup',ev=>{ const p=toDesign(ev);
   if(S.pend){ const e=S.pend.e; S.pend=null; selToggle(e.src,e.si,e.sj,e.item,e.misfiled); }
   if(S.wd) wsDrop(p.x,p.y); if(S.drag) resolveDrop(p.x,p.y); });
 window.addEventListener('keydown',ev=>{
-  if(S.scene==='play'&&!S.paused&&ev.key>='1'&&ev.key<='6'){ fireActive(+ev.key-1); ev.preventDefault(); return; }
+  if(S.scene==='play'&&!S.paused&&ev.key>='1'&&ev.key<='5'){ fireActive(+ev.key-1); ev.preventDefault(); return; }
   if(ev.key==='Escape'&&(S.scene==='map'||S.scene==='ach')){ closePage(); ev.preventDefault(); return; }
-  if(ev.key==='Escape'&&(S.scene==='transport'||S.scene==='shop'||S.scene==='ledger')){ toHub(); ev.preventDefault(); return; }
   if(ev.key==='Escape'&&S.sel.length){ selClear(); Snd.ui(); ev.preventDefault(); return; }
   if(S.scene==='looks'&&S.editName){
     if(ev.key==='Backspace'){ S.look.sign=(S.look.sign||'').slice(0,-1); saveLook(); ev.preventDefault(); }
@@ -2576,12 +2446,11 @@ function drawHUD(){
     button(1182,8,90,42,'END DAY',()=>{ if(S.scene==='play') shutUpShop(); },C.red,12);
   } else {
     plate(1100,8,172,42,'#1d1712','#4a3b2c');
-    txt(S.scene==='hub'?'DUSTWELL':S.scene==='shop'?'THE FIXER':S.scene==='looks'?'THE LOOK':S.scene==='ledger'?'THE LEDGER':
-        S.scene==='paper'?'THE PAPER':S.scene==='workshop'?'THE WORKBENCH':S.scene==='transport'?'THE YARD':S.scene==='summary'?'RESULTS':S.scene==='report'?'DUSK':'TOMORROW',1186,29,12,C.dim,'center');
+    txt(S.scene==='shop'?'THE FIXER':S.scene==='looks'?'THE LOOK':S.scene==='ledger'?'THE LEDGER':
+        S.scene==='paper'?'THE PAPER':S.scene==='workshop'?'THE WORKBENCH':S.scene==='summary'?'RESULTS':S.scene==='report'?'DUSK':'TOMORROW',1186,29,12,C.dim,'center');
   }
 }
 function drawShelves(){
-  fixDupShelves();
   for(let i=0;i<S.shelves.length;i++){
     const sh=S.shelves[i], r=shelfRect(i), cat=CATS[sh.cat];
     const dragRow = S.drag && shelfRowUnder(MX,MY)===i;
@@ -2593,7 +2462,7 @@ function drawShelves(){
     txt(cat.name,r.x+22,r.y+SHELF_HEAD/2,16,cat.col);
     let filled=0; sh.slots.forEach(s=>{ if(s) filled++; });
     txt(filled+'/4',r.x+r.w-6,r.y+SHELF_HEAD/2,14,filled===4?C.gold:C.dimmer,'right');
-    if(filled===0&&freeLabel(i)) txt('click to relabel',r.x+r.w-44,r.y+SHELF_HEAD/2,12,C.dimmer,'right','normal');
+    if(filled===0) txt('click to relabel',r.x+r.w-44,r.y+SHELF_HEAD/2,12,C.dimmer,'right','normal');
     // slots
     for(let j=0;j<4;j++){
       const q=shelfSlotRect(i,j), e=sh.slots[j], hov=S.drag&&inRect(MX,MY,q);
@@ -2637,14 +2506,11 @@ function drawCounter(){
   }
   S.crates.forEach(cr=>{
     const x=Math.round(cr.x), y=Math.round(cr.y);
-    const cw2=cr.big?84:56, ch2=cr.big?52:42;
-    g.fillStyle='rgba(0,0,0,0.35)'; g.fillRect(x-2,y+ch2,cw2+4,5);
-    g.fillStyle=C.wood; g.fillRect(x,y,cw2,ch2);
-    g.fillStyle=C.woodHi; g.fillRect(x,y,cw2,4); g.fillStyle=cr.big?C.gold:C.woodDk; g.fillRect(x,y+Math.round(ch2*0.48),cw2,4);
-    g.fillStyle='#2a1f14'; g.fillRect(x,y+ch2-4,cw2,4);
-    if(cr.big){ g.fillStyle=C.gold; g.fillRect(x,y,3,ch2); g.fillRect(x+cw2-3,y,3,ch2); }
-    txt(cr.big?'BIG CARAVAN':'CARAVAN',x+cw2/2,y+(cr.big?14:12),cr.big?10:9,cr.big?'#f6d874':'#c9b48f','center');
-    txt('x'+cr.items.length,x+cw2/2,y+ch2-13,cr.big?16:13,'#efe3cb','center');       /* how much is still aboard */
+    g.fillStyle='rgba(0,0,0,0.35)'; g.fillRect(x-2,y+42,60,5);
+    g.fillStyle=C.wood; g.fillRect(x,y,56,42);
+    g.fillStyle=C.woodHi; g.fillRect(x,y,56,4); g.fillStyle=C.woodDk; g.fillRect(x,y+20,56,4);
+    g.fillStyle='#2a1f14'; g.fillRect(x,y+38,56,4);
+    txt('CARAVAN',x+28,y+31,11,'#c9b48f','center');
   });
 }
 function drawCustomers(){
@@ -2743,7 +2609,7 @@ function drawSidePanels(){
   }
   const ce=crateEvery(S.day), tleft=Math.max(0,S.nextCrate);
   txt('NEXT CARAVAN',hr.x+12,hr.y+15,11,C.dim);
-  txt(S.closing?'closed':(S.crates.length?'unloading...':((S.crateDue>0||S.bigDue)?'at the gate':'in '+Math.ceil(tleft)+'s')),hr.x+hr.w-12,hr.y+15,11,S.crates.length?C.gold:C.dimmer,'right','normal');
+  txt(S.closing?'closed':'in '+Math.ceil(tleft)+'s',hr.x+hr.w-12,hr.y+15,11,C.dimmer,'right','normal');
   bar(hr.x+12,hr.y+25,hr.w-24,11,S.closing?0:1-tleft/ce,C.gold);
   const hint = S.tut===1 ? 'Drag loot off THE COUNTER onto the shelf with the matching sign.'
              : S.tut===2 ? 'Now drag stock from a shelf onto a customer who wants it.'
@@ -2769,7 +2635,7 @@ function markSelected(q,n){
   txt(''+(n+1),q.x+q.w-13,q.y+13,11,C.gold,'center');
 }
 const RAIL={x:8,w:118,py:108};
-let TIP=null, RAILPOS=[null,null,null,null,null,null], RAILAY=252;
+let TIP=null, RAILPOS=[null,null,null,null,null], RAILAY=252;
 function perkRailRect(i){ return RAILPOS[i]||{x:RAIL.x+6,y:RAILAY,w:RAIL.w-12,h:44}; }
 function wrapLines(str,maxw,size){
   g.font='normal '+size+'px '+FONT;
@@ -2780,7 +2646,7 @@ function wrapLines(str,maxw,size){
 }
 /* only what you actually own shows on the rail */
 function drawPerkRail(){
-  TIP=null; RAILPOS=[null,null,null,null,null,null];
+  TIP=null; RAILPOS=[null,null,null,null,null];
   const live=S.scene==='play';
   const owned=UPGRADES.filter(u=>S.up[u.id]>0);
   let y=RAIL.py;
@@ -2801,7 +2667,7 @@ function drawPerkRail(){
   const acts=ACTIVES.filter((a,i)=>S.actOwn[i]);
   if(!acts.length) return;
   txt('ACTIVE',RAIL.x+8,y-12,10,C.gold);
-  txt('1-6',RAIL.x+RAIL.w-8,y-12,10,C.dimmer,'right');
+  txt('1-5',RAIL.x+RAIL.w-8,y-12,10,C.dimmer,'right');
   let n=0;
   ACTIVES.forEach((a,i)=>{
     if(!S.actOwn[i]) return;
@@ -2813,11 +2679,12 @@ function drawPerkRail(){
       g.globalAlpha=0.6; g.fillStyle='#0b0907';
       g.fillRect(r.x+3,r.y+3,r.w-6,Math.round((r.h-6)*(cd/a.cd))); g.globalAlpha=1;
     }
-    keycap(r.x+3,r.y+8,27,28,''+a.key,a.col,ready?'ready':'rest',(S.keyFx&&S.keyFx[i]>0));
-    blit(perkIcon(a.id,ready?a.col:'#6b5a45'),r.x+33,r.y+10,3);
-    if(a.id==='hire'&&S.handT>0) txt(S.handT.toFixed(0)+'s',r.x+r.w-25,r.y+r.h/2,13,a.col,'center');
-    else if(cd>0) txt(Math.ceil(cd)+'s',r.x+r.w-25,r.y+r.h/2,13,C.ink,'center');
-    else txt('READY',r.x+r.w-25,r.y+r.h/2,8,a.col,'center');
+    blit(perkIcon(a.id,ready?a.col:'#6b5a45'),r.x+10,r.y+10,3);
+    plate(r.x+r.w-22,r.y+3,19,15,'#2a2012',a.col);
+    txt(a.key,r.x+r.w-12,r.y+10,10,a.col,'center');
+    if(a.id==='hire'&&S.handT>0) txt(S.handT.toFixed(0)+'s',r.x+r.w-12,r.y+r.h-13,13,a.col,'center');
+    else if(cd>0) txt(Math.ceil(cd)+'s',r.x+r.w-12,r.y+r.h-13,13,C.ink,'center');
+    else txt('READY',r.x+r.w-12,r.y+r.h-13,8,a.col,'center');
     txt(a.n.split(' ').pop(),r.x+r.w/2,r.y+r.h+8,9,ready?a.col:C.dimmer,'center');
     if(live&&hov)
       TIP={x:r.x+r.w+10,y:r.y,title:a.n+(a.id==='hire'?' · LVL '+S.hire.lvl:''),body:a.id==='hire'?('KIT works the stall beside you for '+hired().dur+' seconds: files, sells and haggles.'):a.d,col:a.col,
@@ -2831,9 +2698,6 @@ function drawPerkRail(){
   } else if(S.steadyT>0){
     plate(RAIL.x+6,sy,RAIL.w-12,26,'#1e2a18','#7fb74f');
     txt('STEADY '+S.steadyT.toFixed(1)+'s',RAIL.x+RAIL.w/2,sy+13,11,'#a8d98a','center');
-  } else if(S.signalT>0){
-    plate(RAIL.x+6,sy,RAIL.w-12,26,'#33200f','#f08a4a');
-    txt('SIGNAL '+S.signalT.toFixed(1)+'s',RAIL.x+RAIL.w/2,sy+13,11,'#f8b888','center');
   }
 }
 function drawPerkTip(){
@@ -2937,9 +2801,10 @@ function drawDayIntro(){
   plate(x,y,w,h,'#1a1410','#6b5540','#8a6f50');
   txt('DAY '+S.day,W/2,y+48,36,C.ink,'center');
   txt('rent due at dusk: '+rentFor(S.day)+'c',W/2,y+88,18,C.gold,'center');
-  txt('caravan every '+Math.round(crateEvery(S.day))+'s, '+(crateSize(S.day)>3?'3-'+crateSize(S.day):'3')+' a crate  ·  customer every '+custEvery(S.day).toFixed(1)+'s',
+  txt('caravan every '+Math.round(crateEvery(S.day))+'s  ·  customer every '+custEvery(S.day).toFixed(1)+'s',
       W/2,y+116,12,C.dim,'center','normal');
-  if(S.day===3) txt('NEW: bulk orders - buyers who want several at once.',W/2,y+146,14,'#e8b13c','center');
+  if(S.day===2) txt('NEW: junk crates start arriving.',W/2,y+146,14,CATS.junk.col,'center');
+  else if(S.day===3) txt('NEW: bulk orders - buyers who want several at once.',W/2,y+146,14,'#e8b13c','center');
   else if(S.day===5) txt('NEW: the bad ones come to town.',W/2,y+146,14,C.red,'center');
   else if(S.day>1) txt('The road is busier. Patience is shorter.',W/2,y+146,13,C.dim,'center','normal');
   const hd=null;                                   /* the hand is an active now: no wage, no morning toggle */
@@ -2966,7 +2831,7 @@ function drawDayIntro(){
          ()=>{S.scene='play';S.sceneT=0;say(pick(['Another day.','Let\'s trade.','Dust\'s up. Open.']));},C.gold,17);
 }
 function paperDay(d){ return d>=5&&(d-5)%4===0; }          /* the Herald prints on day 5, 9, 13 ... */
-function afterPaper(){ S.scene=(S.day%5===0&&S.history.length)?'ledger':'hub'; S.sceneT=0; }
+function afterPaper(){ S.scene=(S.day%5===0&&S.history.length)?'ledger':'shop'; S.sceneT=0; }
 function afterReport(){ if(paperDay(S.day)){ S.scene='paper'; S.sceneT=0; } else afterPaper(); }
 function leftovers(){
   let n=0,v=0;
@@ -3031,23 +2896,6 @@ function drawReport(){
     } else button(W/2-150,y+h-70,300,50,'CLOSE FOR THE DAY',()=>afterReport(),C.gold,15);
   }
 }
-/* A keyboard key, seen a little from above. state: 'ready' | 'rest' | 'off';  down = pressed this instant */
-function keycap(x,y,w,h,label,col,state,down){
-  x=Math.round(x); y=Math.round(y);
-  const live=state==='ready', top=live?'#ddd2ba':(state==='rest'?'#8f8776':'#5e584d'),
-        hi=live?'#f6eed8':(state==='rest'?'#a59c89':'#6e675b'), side=live?'#9c9078':(state==='rest'?'#5f594c':'#403c34'),
-        ink=live?'#1a1410':(state==='rest'?'#2e2a23':'#2a2722'), lift=down?0:3;
-  g.fillStyle='#0a0806'; g.fillRect(x,y+2,w,h);                                  /* shadow / base */
-  g.fillStyle='#2a251d'; g.fillRect(x+1,y+1,w-2,h);                              /* outline */
-  g.fillStyle=side; g.fillRect(x+2,y+2,w-4,h-2);                                 /* side wall */
-  const tx=x+3, ty=y+2+(3-lift), tw=w-6, th=h-7;                                 /* raised top face */
-  g.fillStyle=top; g.fillRect(tx,ty,tw,th);
-  g.fillStyle=hi;  g.fillRect(tx,ty,tw,1); g.fillRect(tx,ty,1,th);
-  g.fillStyle=side; g.fillRect(tx,ty+th-1,tw,1); g.fillRect(tx+tw-1,ty,1,th);
-  g.fillStyle='#2a251d'; g.fillRect(tx,ty,1,1); g.fillRect(tx+tw-1,ty,1,1); g.fillRect(tx,ty+th-1,1,1); g.fillRect(tx+tw-1,ty+th-1,1,1);   /* rounded corners */
-  txt(label,tx+tw/2,ty+th/2-1,Math.round(h*0.5),ink,'center');
-  g.fillStyle=live?col:side; g.fillRect(tx+4,ty+th-4,tw-8,2);                     /* the perk's colour, like a painted legend */
-}
 function shopCard(cx,cy,cw,ch,icon,col,title,desc,lvl,max,price,afford,fn,keyTag){
   const hov=afford&&inRect(MX,MY,{x:cx,y:cy,w:cw,h:ch});
   const maxed=price===null;
@@ -3055,96 +2903,21 @@ function shopCard(cx,cy,cw,ch,icon,col,title,desc,lvl,max,price,afford,fn,keyTag
   perkBadge(cx+8,cy+8,icon,col,lvl>0||afford);
   txt(fitText(title,cw-52,11),cx+42,cy+20,11,maxed?C.dimmer:C.ink);
   wrapText(desc,cx+42,cy+38,cw-52,12,9,C.dim);
-  for(let k=0;k<max;k++){ g.fillStyle=k<lvl?col:'#3a3228'; if(keyTag) g.fillRect(cx+cw-16-k*10,cy+8,7,5); else g.fillRect(cx+10,cy+42+k*8,8,5); }
-  if(keyTag){ keycap(cx+6,cy+40,32,30,keyTag,col,(lvl>0||afford)?'ready':'off',false); txt('KEY',cx+22,cy+78,7,C.dimmer,'center'); }
+  for(let k=0;k<max;k++){ g.fillStyle=k<lvl?col:'#3a3228'; g.fillRect(cx+10,cy+42+k*8,8,5); }
+  if(keyTag){ plate(cx+cw-24,cy+6,18,16,'#2a2012',col); txt(keyTag,cx+cw-15,cy+14,10,col,'center'); }
   if(maxed) txt('OWNED',cx+cw-8,cy+ch-12,10,C.dimmer,'right');
   else {
     txt(price+'c',cx+cw-8,cy+ch-12,13,afford?col:C.red,'right');
     if(afford) BTNS.push({x:cx,y:cy,w:cw,h:ch,fn:fn});
   }
 }
-/* ================================================================
-   THE TOWN  -  the page every day starts from. Everything you can do
-   off the stall hangs off here; the Fixer is one door among several.
-   ================================================================ */
-let CITY_IMG=null;
-function buildCity(){
-  const Wc=150,Hc=80, c=makeCanvas(Wc,Hc), x=c.getContext('2d');
-  const px=(a,b,w,h,col)=>{ x.fillStyle=col; x.fillRect(Math.round(a),Math.round(b),Math.round(w),Math.round(h)); };
-  ['#2a2238','#3d2c40','#5a3644','#7d4440','#a85c3a','#cf7c3a','#e39a48'].forEach((col,i)=>px(0,i*8,Wc,9,col));
-  for(let dy=-13;dy<=13;dy++){ const w=Math.floor(Math.sqrt(169-dy*dy)); px(104-w,40+dy,w*2+1,1,dy<-4?'#f6d08a':'#f0b060'); }
-  let sd=19; const rn=()=>{ sd=(sd*1103515245+12345)&0x7fffffff; return sd/0x7fffffff; };
-  /* far ruins */
-  let fx=0; while(fx<Wc){ const w=4+rn()*7, h=8+rn()*16; px(fx,58-h,w,h,'#6b3f40'); if(rn()<0.4) px(fx+1,58-h-3,2,3,'#6b3f40'); fx+=w+1; }
-  /* broken towers */
-  [[12,30,11],[30,22,9],[47,36,13],[70,18,8],[84,28,10],[118,34,12],[134,24,9]].forEach(t=>{
-    const bx=t[0], h=t[1], w=t[2], top=60-h;
-    px(bx,top,w,h,'#2e2230'); px(bx,top,2,h,'#3d2e3e');
-    for(let k=0;k<w;k+=2) px(bx+k,top-(rn()*4|0),2,4,'#2e2230');                  /* ragged crown */
-    for(let wy=top+4;wy<58;wy+=5) for(let wx=bx+2;wx<bx+w-2;wx+=3) if(rn()<0.16) px(wx,wy,1,2,'#f0c060');
-  });
-  /* water tower and windmill */
-  px(58,30,10,7,'#241a26'); px(57,29,12,1,'#3d2e3e'); px(59,37,1,22,'#241a26'); px(66,37,1,22,'#241a26'); px(59,46,8,1,'#241a26');
-  px(101,34,1,26,'#241a26'); [[-6,-1],[6,1],[-1,6],[1,-6]].forEach(v=>{ for(let k=1;k<7;k++) px(101+v[0]*k/6,34+v[1]*k/6,1,1,'#241a26'); });
-  /* the wall, gate and lamps */
-  px(0,60,Wc,8,'#1d1620'); for(let k=0;k<Wc;k+=6) px(k,58,3,2,'#1d1620');
-  px(68,56,14,12,'#140f16'); px(70,58,10,10,'#2a1c18'); px(66,54,18,2,'#3d2e3e');
-  [[64,57],[85,57]].forEach(l=>{ px(l[0],l[1],2,2,'#f6d874'); px(l[0]-1,l[1]-1,4,1,'#1d1620'); });
-  /* dunes in front */
-  px(0,68,Wc,12,'#3a2a22'); for(let k=0;k<16;k++){ const dx=rn()*Wc; px(dx,69+rn()*9,6+rn()*10,1,k%2?'#4a362a':'#2a1e18'); }
-  px(20,66,18,2,'#3a2a22'); px(96,66,26,2,'#3a2a22');
-  return c;
-}
-function hubOpenDay(){ if(S.fresh){ S.fresh=false; S.scene='dayintro'; S.sceneT=0; } else nextDay(); }
-function toHub(){ S.scene='hub'; S.sceneT=0; }
-function buyBench(){
-  if(S.wb){ enterWorkshop(); return; }
-  if(S.caps<CRAFT.price){ Snd.bad(); return; }
-  S.caps-=CRAFT.price; S.wb=true; S.wbDay=S.day+1; achInc('bench'); Snd.coin(6); flash('#8fd0ee',0.25); enterWorkshop();
-}
-function drawHub(){
-  dim(0.8);
-  const x=70,y=78,w=W-140,h=H-98;
-  plate(x,y,w,h,'#1a1410','#6b5540','#8a6f50');
-  txt('DUSTWELL',x+30,y+36,28,C.gold);
-  txt(S.fresh?'before your first day':('the night after day '+S.day),x+30,y+64,12,C.dim,'left','normal');
-  txt('purse '+S.caps+'c   ·   rent '+(S.fresh?'tonight ':'tomorrow ')+rentFor(S.fresh?S.day:S.day+1)+'c',x+w-30,y+36,14,C.ink,'right');
-  /* the town, in the middle */
-  if(!CITY_IMG) CITY_IMG=buildCity();
-  const iw=600, ih=320, ix=W/2-iw/2, iy=y+96;
-  plate(ix-6,iy-6,iw+12,ih+12,'#0d0a08','#5c4a37');
-  g.imageSmoothingEnabled=false; g.drawImage(CITY_IMG,ix,iy,iw,ih);
-  [[64,57],[85,57]].forEach((l,i)=>{ const p=0.5+Math.sin(S.t*3+i*2)*0.25; const gx=ix+l[0]*4+4, gy=iy+l[1]*4+4, gr=g.createRadialGradient(gx,gy,2,gx,gy,40);
-    gr.addColorStop(0,'rgba(246,216,116,'+(0.5*p)+')'); gr.addColorStop(1,'rgba(246,216,116,0)'); g.fillStyle=gr; g.fillRect(gx-40,gy-40,80,80); });
-  /* doors, left and right of it */
-  const bw=216, bh=58, gp=12, lx=x+30, rx=x+w-30-bw, by=iy;
-  const nl=newLooksOn(S.day).length, canWb=S.wb||S.caps>=CRAFT.price;
-  button(lx,by,bw,bh,'THE FIXER',()=>{S.scene='shop';S.sceneT=0;},C.gold,15);
-  button(lx,by+(bh+gp),bw,bh,S.wb?'THE WORKBENCH':('WORKBENCH · '+CRAFT.price+'c'),()=>buyBench(),canWb?'#8fd0ee':C.dimmer,S.wb?13:11);
-  button(lx,by+(bh+gp)*2,bw,bh,'TRANSPORT '+rigCount()+'/'+RIG.length,()=>{S.scene='transport';S.sceneT=0;},rigDone()?C.gold:'#c8a070',13);
-  button(lx,by+(bh+gp)*3,bw,bh,'STALL & LOOKS'+(nl?' *':''),()=>{S.scene='looks';},nl?C.purple:C.dim,13);
-  button(rx,by,bw,bh,'THE LEDGER',()=>{S.scene='ledger';},S.history.length?C.green:C.dimmer,13);
-  button(rx,by+(bh+gp),bw,bh,'THE MAP',()=>openPage('map'),'#8fd0ee',13);
-  button(rx,by+(bh+gp)*2,bw,bh,'ACHIEVEMENTS '+achCount()+'/'+ACH.length,()=>openPage('ach'),C.gold,10);
-  if(!S.wb&&inRect(MX,MY,{x:lx,y:by+(bh+gp),w:bw,h:bh})){
-    plate(lx+bw+10,by+(bh+gp)-8,360,84,'#14100c','#8fd0ee');
-    txt('THE WORKBENCH',lx+bw+24,by+(bh+gp)+10,12,'#8fd0ee');
-    wrapText('Buy materials, craft your own goods and refine them up to LEGENDARY.',lx+bw+24,by+(bh+gp)+30,332,14,10,C.ink);
-  }
-  button(W/2-230,iy+ih+28,460,62,'OPEN THE STALL  ·  DAY '+(S.fresh?S.day:S.day+1),()=>hubOpenDay(),C.gold,18);
-}
-function buyActive(i){
-  const a=ACTIVES[i];
-  if(S.actOwn[i]||S.caps<a.cost) return;
-  S.caps-=a.cost; S.actOwn[i]=true; Snd.coin(4); flash(a.col,0.2);
-  AST.perks=n0('perks')+1; if(S.actOwn.every(Boolean)) AST.allActive=1; achCheck();
-}
 function drawShop(){
   dim(0.78);
-  const w=940,h=600,x=W/2-w/2,y=74;
+  const w=940,h=560,x=W/2-w/2,y=H/2-h/2;
   plate(x,y,w,h,'#1a1410','#6b5540','#8a6f50');
   txt('THE FIXER',W/2,y+36,28,C.gold,'center');
-  button(x+w-30-190,y+18,190,36,'BACK TO TOWN',()=>toHub(),C.gold,12);
+  button(x+30,y+18,130,34,'THE MAP',()=>openPage('map'),'#8fd0ee',11);
+  button(x+w-30-210,y+18,210,34,'ACHIEVEMENTS '+achCount()+'/'+ACH.length,()=>openPage('ach'),C.gold,10);
   txt('spend it or save it for rent  ·  purse '+S.caps+'c',W/2,y+62,13,C.dim,'center','normal');
   const cw=211,ch=92,gap=12;
   txt('PASSIVE  ·  always on',x+30,y+88,12,C.gold);
@@ -3153,22 +2926,40 @@ function drawShop(){
     const lv=S.up[u.id], maxed=lv>=u.max, afford=!maxed&&S.caps>=u.cost[lv];
     shopCard(cx,cy,cw,ch,u.id,C.gold,u.n,u.d,lv,u.max,maxed?null:u.cost[lv],afford,()=>buyUpgrade(u),null);
   });
-  txt('ACTIVE  ·  press its number key during the day',x+30,y+326,12,'#a173c8');
+  {
+    const cx=x+30+3*(cw+gap), cy=y+100+(ch+gap);
+    const h2=hired(), nx=nextHand(), afford=!!nx&&S.caps>=nx.fee;
+    shopCard(cx,cy,cw,ch,'hire','#8fd0ee',h2?('HIRED HAND · LVL '+h2.lvl):'HIRE A HAND',
+      nx?('active: KIT works the stall for '+nx.dur+'s'):('KIT works the stall for '+h2.dur+'s'),
+      S.hire.lvl,HANDS.length, nx?nx.fee:null, afford,
+      ()=>{ S.caps-=nx.fee; S.hire.lvl=nx.lvl; S.actOwn[4]=true; Snd.coin(4); flash('#8fd0ee',0.2); AST.perks=n0('perks')+1; AST.hired=1; if(S.actOwn.every(Boolean)) AST.allActive=1; achCheck(); }, '5');
+    txt('ACTIVE · 40s rest',cx+10,cy+ch-12,9,C.dimmer,'left','normal');
+  }
+  txt('ACTIVE  ·  press the key',x+30,y+318,12,'#a173c8');
   ACTIVES.forEach((a,i)=>{
-    const cx=x+30+(i%4)*(cw+gap), cy=y+338+Math.floor(i/4)*(ch+gap+16);
-    if(a.id==='hire'){
-      const h2=hired(), nx=nextHand(), afford=!!nx&&S.caps>=nx.fee;
-      shopCard(cx,cy,cw,ch,'hire',a.col,h2?('HIRED HAND · LVL '+h2.lvl):'HIRE A HAND',
-        nx?('KIT works the stall for '+nx.dur+'s'):('KIT works the stall for '+h2.dur+'s'),
-        S.hire.lvl,HANDS.length, nx?nx.fee:null, afford,
-        ()=>{ S.caps-=nx.fee; S.hire.lvl=nx.lvl; S.actOwn[i]=true; Snd.coin(4); flash(a.col,0.2); AST.perks=n0('perks')+1; AST.hired=1; if(S.actOwn.every(Boolean)) AST.allActive=1; achCheck(); }, ''+a.key);
-    } else {
-      const own=S.actOwn[i], afford=!own&&S.caps>=a.cost;
-      shopCard(cx,cy,cw,ch,a.id,a.col,a.n,a.d,own?1:0,1,own?null:a.cost,afford,()=>buyActive(i),''+a.key);
-    }
-    txt(a.cd+'s rest',cx+44,cy+ch-12,9,C.dimmer,'left','normal');
+    if(a.id==='hire') return;                      /* sold from her own card above, it has levels */
+    const cx=x+30+i*(cw+gap), cy=y+330;
+    const own=S.actOwn[i], afford=!own&&S.caps>=a.cost;
+    shopCard(cx,cy,cw,ch,a.id,a.col,a.n,a.d,own?1:0,1,own?null:a.cost,afford,
+      ()=>{ S.caps-=a.cost; S.actOwn[i]=true; Snd.coin(4); flash(a.col,0.2); AST.perks=n0('perks')+1; if(S.actOwn.every(Boolean)) AST.allActive=1; achCheck(); },''+a.key);
+    txt(a.cd+'s',cx+10,cy+ch-12,10,C.dimmer,'left','normal');
     txt(fitText(a.why,cw-8,9,'normal'),cx+4,cy+ch+12,9,C.dimmer,'left','normal');
   });
+  const nl=newLooksOn(S.day).length;
+  button(x+30,y+h-58,196,44,'STALL & LOOKS'+(nl?' *':''),()=>{S.scene='looks';},nl?C.purple:C.dim,11);
+  button(x+236,y+h-58,150,44,'THE LEDGER',()=>{S.scene='ledger';},S.history.length?C.green:C.dimmer,11);
+  const canWb=S.wb||S.caps>=CRAFT.price;
+  button(x+396,y+h-58,250,44,S.wb?'THE WORKBENCH':('WORKBENCH · '+CRAFT.price+'c'),()=>{
+      if(S.wb){ enterWorkshop(); return; }
+      if(S.caps<CRAFT.price){ Snd.bad(); return; }
+      S.caps-=CRAFT.price; S.wb=true; S.wbDay=S.day+1; achInc('bench'); Snd.coin(6); flash('#8fd0ee',0.25); enterWorkshop();
+    },canWb?'#8fd0ee':C.dimmer,11);
+  if(!S.wb&&inRect(MX,MY,{x:x+396,y:y+h-58,w:250,h:44})){
+    plate(x+336,y+h-150,370,84,'#14100c','#8fd0ee');
+    txt('THE WORKBENCH',x+350,y+h-132,12,'#8fd0ee');
+    wrapText('Buy materials, craft your own goods and refine them up to LEGENDARY. Shelf stock keeps overnight once you own it.',x+350,y+h-112,342,14,10,C.ink);
+  }
+  button(x+656,y+h-58,254,44,'TOMORROW · DAY '+(S.day+1),()=>nextDay(),C.gold,13);
 }
 function drawLookPreview(x,y){
   if(!SCENE) SCENE=buildScene();
@@ -3219,8 +3010,8 @@ function drawLooks(){
     plate(x+24,y+400,296,46,'#1d1712','#3a3228');
     txt('nothing on trial',x+172,y+423,12,C.dimmer,'center','normal');
   }
-  button(x+24,y+468,296,36,'BACK TO TOWN',()=>{dropTries();S.editName=false;toHub();},C.dim,12);
-  button(x+24,y+510,296,44,'OPEN THE STALL · DAY '+(S.fresh?S.day:S.day+1),()=>{dropTries();S.editName=false;hubOpenDay();},C.gold,12);
+  button(x+24,y+468,296,36,'BACK TO THE FIXER',()=>{dropTries();S.editName=false;S.scene='shop';},C.dim,12);
+  button(x+24,y+510,296,44,'OPEN TOMORROW · DAY '+(S.day+1),()=>{dropTries();S.editName=false;nextDay();},C.gold,13);
   const cx=x+336;
   txt('THE MERCHANT',cx,y+96,13,C.gold);
   lookRow('HAT','hat',cx,y+108,58,40);
@@ -3300,10 +3091,10 @@ function drawLedger(){
   /* ---- by category ---- */
   const cC={x:x+28,y:y+296,w:576,h:186};
   crtText('TAKINGS BY SHELF',cC.x,cC.y+12,11,PH.mid,'left','normal');
-  const tot={}; SHOPCATS.forEach(k=>tot[k]=0);
-  H2.forEach(d=>SHOPCATS.forEach(k=>tot[k]+=(d.cat&&d.cat[k])||0));
-  let maxC=1; SHOPCATS.forEach(k=>maxC=Math.max(maxC,tot[k]));
-  SHOPCATS.forEach((k,i)=>{
+  const tot={}; CATKEYS.forEach(k=>tot[k]=0);
+  H2.forEach(d=>CATKEYS.forEach(k=>tot[k]+=(d.cat&&d.cat[k])||0));
+  let maxC=1; CATKEYS.forEach(k=>maxC=Math.max(maxC,tot[k]));
+  CATKEYS.forEach((k,i)=>{
     const ry=cC.y+34+i*28;
     crtText(CATS[k].name,cC.x+4,ry+8,11,PH.mid);
     const bx=cC.x+68, bwid=Math.round((cC.w-150)*tot[k]/maxC);
@@ -3331,14 +3122,14 @@ function drawLedger(){
 
   g.fillStyle=PH.dim; g.fillRect(x+28,y+500,w-56,1);
   let bestCat='-',bestV=-1;
-  SHOPCATS.forEach(k=>{ if(tot[k]>bestV){ bestV=tot[k]; bestCat=CATS[k].name; } });
+  CATKEYS.forEach(k=>{ if(tot[k]>bestV){ bestV=tot[k]; bestCat=CATS[k].name; } });
   const half=Math.ceil(H2.length/2);
   const e1=H2.slice(0,half).reduce((a,d)=>a+d.earned,0)/Math.max(1,half);
   const e2=H2.slice(half).reduce((a,d)=>a+d.earned,0)/Math.max(1,H2.length-half);
   const trend=e1>0?Math.round((e2-e1)/e1*100):0;
   crtText('> takings '+(trend>=0?'up ':'down ')+Math.abs(trend)+'% across the window · best shelf '+bestCat+
           ' · '+ts+' sales, '+ta+' walked out',x+28,y+520,12,PH.mid,'left','normal');
-  button(W/2-130,y+h-64,260,44,'CLOSE THE BOOKS',()=>toHub(),C.gold,14);
+  button(W/2-130,y+h-64,260,44,'CLOSE THE BOOKS',()=>{S.scene='shop';},C.gold,14);
 
   g.fillStyle='rgba(0,0,0,0.22)';
   for(let sy=y; sy<y+h; sy+=3) g.fillRect(x,sy,w,1);
@@ -3453,14 +3244,12 @@ function draw(){
   if(S.scene==='menu') drawMenu();
   else if(S.scene==='dayintro') drawDayIntro();
   else if(S.scene==='report') drawReport();
-  else if(S.scene==='hub') drawHub();
   else if(S.scene==='shop') drawShop();
   else if(S.scene==='looks') drawLooks();
   else if(S.scene==='ledger') drawLedger();
   else if(S.scene==='paper') drawPaper();
   else if(S.scene==='ach') drawAchievements();
   else if(S.scene==='map') drawMap();
-  else if(S.scene==='transport') drawTransport();
   else if(S.scene==='workshop') drawWorkshop();
   else if(S.scene==='summary') drawSummary();
   else if(S.scene==='gameover') drawGameOver();

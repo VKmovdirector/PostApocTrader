@@ -1,4 +1,4 @@
-# RUST & RATIONS — design notes (build 11)
+# RUST & RATIONS — design notes (build 18)
 
 A trading-post game. You run the only stall in a dust-blown town. Caravans dump
 mixed salvage on your counter, wanderers queue at the window, and rent is due
@@ -716,3 +716,275 @@ the stall cutout, the flag into the backdrop; wall and lantern are painted proce
 The Sorting Robo-Hand is a brush-stroke arm drawn behind whichever figure is worn.
 
 Dev hook: `window.__zoom={x,y,k}` magnifies a region of the canvas for inspection.
+
+
+---
+
+## Appendix — crafting test (`crafting-demo.html`, separate rig)
+
+Route C of the "scale to 3-4 hours" options. The main game is untouched. 7-day run, caravans
+**off** by default (menu toggle turns them back on).
+
+**Loop:** day intro → **workshop** (untimed) → trading day → dusk → next day. Fixer, looks,
+ledger and paper are skipped so the loop repeats fast.
+
+**Workshop.** Left: material market, fixed prices — Scrap 1, Cloth 1, Grain 1, Timber 2,
+Herbs 2, Glass 2, Chem 3, Wire 4; Fine Parts 9 (day 3) and Relic Core 24 (day 5) are
+refine-only. Centre: recipe book by category (every good = two materials, click to craft
+into an 18-slot tray), the **anvil** (drag an object on, pay the bill, it goes up a tier —
+deterministic), the tray. Right: the four shelves; what you shelve is what you open with,
+and unsold stock stays overnight. Anything left in the tray rides along as **back stock**:
+it feeds onto the counter one piece every 1.6 s while there is room, so the file-it-fast
+loop survives without caravans. Unsold back stock returns to the tray next morning.
+
+| Tier | Value | Refine bill (A, B = the recipe's two materials) | Opens |
+|---|---|---|---|
+| Common | x1 | recipe: 1 A + 1 B | day 1 |
+| Rare | x2.2 | 2 A + 1 B | day 1 |
+| Epic | x5 | 3 A + 3 B + 1 Fine Parts | day 3 |
+| Legendary | x12 | 4 A + 4 B + 2 Fine Parts + 1 Relic Core | day 5 |
+
+**Purse.** Customer tier = richest rarity they pay full price for (tier 1 → Rare, 2 → Epic,
+3 → Legendary), shown as pips by the name. Above it they pay their cap and the price plate
+says `PAYS AS RARE` before you drop. No randomness anywhere in crafting.
+
+**Recipes by day:** 1 Zip Gun, Field Wrap, Canned Beans, Circuit Board · 2 Tin Cans,
+Shotshells · 3 Mend Shot, Clean Water · 4 Power Cell, Duct Tape · 5 Trench Knife, Ash Plum ·
+6 Iodine Tabs, Old Terminal, Scrap Plate. Exact-item wants only ask for opened recipes.
+
+**Bot results (instant-reaction seller, start purse 80c, same rent curve):**
+commons only → takings fall to ~50-75c/day and the run dies on day 6; refine to Rare →
+~180-410c/day, purse 688c on day 7; refine everything → slower start, 823c on day 7, purse
+763c. So refining is mandatory, Rare is the safe line, Epic/Legendary pay off only from
+day 4-5 when rich buyers arrive. First finding fixed during the build: without caravans the
+16 shelf slots capped a whole day's sales — hence back stock. Still open: the bot leaves
+5-9 walk-outs a day because four shelves cannot cover five categories plus exact-item asks.
+
+
+---
+
+## Appendix — build 12: the workbench joins the main game
+
+The crafting rig and the main game now share one crafting module (generated into both files
+from the same source; `CRAFT.demo` switches behaviour).
+
+**Changes made to crafting first (both files):**
+- **Scrap bin** in the workbench (last tray cell). Drop any object on it: half of every
+  material that went into it comes back, at least one of its first material. The bin shows
+  what you will get before you let go.
+- **Materials cost double:** Scrap 2, Cloth 2, Grain 2, Timber 4, Herbs 4, Glass 4, Chem 6,
+  Wire 8, Fine Parts 18, Relic Core 48. A flat doubling would have made a third of the
+  recipes loss-making (goods sell at about half their value), so the cheap goods now come
+  out **two per craft**: Field Wrap, Canned Beans, Circuit Board, Tin Cans, Shotshells,
+  Duct Tape, Ash Plum, Scrap Plate. Every recipe costs roughly 25-55 % of what it sells for.
+- **Workbench walkthrough**, first visit only: starter kit (6 Scrap, 4 Timber, 2 Cloth) →
+  click the Zip Gun recipe → drag it to the anvil → press REFINE → put it on a shelf →
+  closing card on the market, the scrap bin and purse pips. Text cards wait for a click,
+  action steps advance on the action, SKIP is always there. One lesson, one kit per run.
+
+**In the main game:**
+- The Fixer's bottom row is now STALL & LOOKS · THE LEDGER · **WORKBENCH · 1000c** ·
+  TOMORROW. Hovering the locked button explains it; buying it opens the bench at once.
+- The bench is a night screen: you craft for **tomorrow**. Recipe and tier calendar counts
+  from the day you bought it (4 recipes and Rare at once, +2 recipes a day, Epic on bench
+  day 3, Legendary on bench day 5, everything by bench day 6).
+- Caravans stay on. There is no back stock here — the tray simply keeps goods until you
+  shelve them. **Once you own the bench, shelf stock keeps overnight** (before that the
+  shelves are cleared every morning as in build 11).
+- Rarity frames, `PAYS AS RARE` warning and purse pips appear on the trading screen (pips
+  only once the bench is owned). Rarity is a variant item object with the same id, so
+  the hired hand, robo-hand, bulk orders and active perks handle refined goods unchanged.
+- Dusk report lists materials bought the night before (already paid, for information).
+
+**Verified:** unlock refused when poor, 1000c deducted when rich, walkthrough end to end,
+scrap yields, paired crafts, stock surviving the night, 20-24 day bot runs through every
+screen with zero errors. **Not reliably measured:** how much the bench is worth. My selling
+bot barely uses it, and because stock now keeps overnight and caravans keep delivering,
+shelves are rarely empty at night — making room (selling out, scrapping leftovers) is the
+real cost of crafting in the main game.
+
+
+---
+
+## Appendix — build 13 (supersedes the numbers above where they differ)
+
+| # | Change |
+|---|---|
+| 1-3 | Active perk prices: Counter Sweep **600c**, Hard Patter **1000c**, The Back Room **1200c** (Steady Hands stays 280c). |
+| 4 | **Stock always keeps overnight** (shelves and counter). The dusk report, when anything is left, offers `SCRAP THEM +Nc` (25 % of value each, the barrel rate) or `KEEP THEM`. If rent broke you but the leftovers would cover it, the report offers `SCRAP IT ALL TO MAKE RENT` instead of ending the run. |
+| 5 | **The hired hand is an active perk, key 5.** KIT works the stall for **5 / 8 / 12 s** at level 1 / 2 / 3 (**2000 / 2500 / 3000c**), then rests 40 s (cooldown starts when she clocks off). No day gate, no wage, no morning toggle, no fourth customer window (the queue is always three). One stat line for all levels: 740 px/s, 93 % correct filing, haggles to 85 % of the ceiling, +10 % on her sales. Anything in her hand when time runs out goes back to the counter. |
+| 6, 10, 11 | **Materials x8:** Scrap / Cloth / Grain 16, Timber / Herbs / Glass 32, Chem 48, Wire 64. **Fine Parts 1000c**, opens 5 days after the bench; **Relic Core 2000c**, opens after 10. Epic and Legendary work open on the same days. |
+| 7 | **CONTROL-click (or right-click) scraps an item** on the counter or a shelf, same 25 % as the barrel; at the bench it returns half the materials. Day-1 lesson gained a step after the haggle sale: tin cans land on the counter, scrap them (either way), then the closing card. |
+| 8, 9 | Caravan goods after **day 10: 5 % Rare**; after **day 15: also 1 % Epic**. Purse pips show from day 11 even without the bench. The Back Room still conjures Commons. |
+| 12 | No JUNK tab at the bench. |
+| 13 | The Dust Herald prints on **day 5, 9, 13, 17…** only; other nights go straight to the ledger/Fixer. |
+
+### (Superseded by build 14) Warning: at these material prices the bench cannot pay for itself
+Goods sell for about half their value, so:
+
+| Object | Costs to make | Sells for about |
+|---|---|---|
+| Zip Gun, Common | 48c | 13c |
+| Zip Gun, Rare | 112c | 29c |
+| Old Terminal, Common | 96c | 18c |
+| Old Terminal, Legendary | 5,928c | 216c |
+
+Even with every price perk, a streak and a perfect haggle (roughly x4) a Common Terminal
+reaches ~70c against 96c of materials. As it stands the bench is a pure chit sink. If it is
+meant to earn, crafted goods need a value multiplier of their own (about x6 at these prices),
+or the x8 should apply to refine bills only.
+
+
+---
+
+## Appendix — build 14: making the bench pay
+
+- **Hand-made goods are worth x8** (`CRAFT.mult`) a caravan piece of the same tier. Crafted is a
+  variant flag like rarity (`rar(item,r,crafted)`), marked by a tan frame and a maker's notch,
+  `HAND-MADE` in the drag label. Caravan Rares/Epics and Back Room stock do **not** get it.
+- **Tier values:** Common x1, Rare x2.2, **Epic x6** (was 5), **Legendary x16** (was 12).
+- **Fine Parts / Relic Core are one-time unlocks** — 1000c (bench day 5) and 2000c (bench day
+  10) — then ordinary materials at 144c / 384c. The anvil says so when a refine is blocked.
+- **Scrap value ignores the x8** (barrel, CONTROL-click, dusk scrap, the hand's strand), or a
+  fresh Zip Gun (48c of materials) would scrap for 52c.
+- Circuit Board is now Cloth + Wire (was Wire + Cloth) so its Rare refine costs 96c, not 144c.
+
+Cost to make > plain sale (half of value, no bonuses):
+
+| | Common | Rare | Epic | Legendary |
+|---|---|---|---|---|
+| Zip Gun | 48 > 104 | 112 > 229 | 400 > 624 | 1264 > 1664 |
+| Mend Shot | 80 > 128 | 192 > 282 | 576 > 768 | 1568 > 2048 |
+| Old Terminal | 96 > 144 | 256 > 317 | 688 > 864 | 1744 > 2304 |
+| Circuit Board (x2) | 40 > 68 | 136 > 150 | 520 > 408 | 1512 > 1088 |
+| Ash Plum (x2) | 16 > 36 | 64 > 79 | 304 > 216 | 1104 > 576 |
+
+Cheap goods lose above Rare on purpose: what you refine is a decision.
+
+### Measured, and it matters: x8 runs away in real play
+The table above is the *plain* price. Real late-game sales carry sign, streak, haggle, exact
+match and buyer generosity — roughly x2.3 on top — and every one of those multiplies the
+hand-made value too. A bot that fills the shelves with crafted Rares each night, 20 days:
+
+| `CRAFT.mult` | purse on day 20 | takings/day, last 8 days |
+|---|---|---|
+| no bench | ~2,200c | ~300c |
+| x2.5 / x3 | ~580c (bench loses money) | 1,000-1,500c |
+| x4 | ~2,000c (break-even with no bench) | ~2,300c |
+| x5 | 10,700-15,700c | ~3,300c |
+| x6 | ~25,000-26,500c | ~5,200c |
+| **x8 (shipped)** | **~42,000c** | **4,000-9,500c** |
+
+Profit compounds because takings are reinvested in more stock. The knee is between x4 and x5.
+
+
+---
+
+## Appendix — build 15
+
+- **Hired hand: two levels.** KIT works **10 s** (2500c) then **15 s** (3200c). 40 s rest, key 5, unchanged otherwise.
+- **Bulk-lesson fix (day 3).** The lesson topped its stock and its buyer back up *before* checking
+  whether the order had been filled, so the sale was answered with a fresh buyer and fresh meds.
+  The step is now decided first. A bulk order also counts **every piece** in `Sales` (3 sold, not 1).
+- **Shift-held drag** lifts a marked stack (build 14c) — a drag with shift down used to unmark the item.
+- **The map** (`THE MAP` on the title screen and the pause screen, Esc closes). A pixel map of
+  THE BARRENS with five towns on one caravan road: **Dustwell** (your stall — a bit of everything),
+  **Saltpan** (dead-lake salt miners — water and meds), **Cinder Gap** (toll-keeping raiders —
+  arms, short tempers), **Old Meridian** (the drowned city — tech), **Last Pump** (end of the
+  road — the finest goods). Pointing at a town shows its card. Only Dustwell is open; the rest
+  are marked `THE ROAD IS NOT OPEN YET`. It is the scaffold for route A (towns as chapters) —
+  no gameplay hangs on it yet.
+- **Achievements** (`ACHIEVEMENTS n/50` on the title screen and the pause screen). 50, kept
+  between runs in `localStorage` (`rustrations.ach`), with a toast when one lands. Groups: trade
+  (sales, career takings, single-sale size), haggling, streaks, the counter (filing, misfiles,
+  spills, scrap), bulk orders, days survived, day records (no walk-outs, spotless, takings,
+  purse, rent by a whisker, fire sale, keeping stock), the Fixer (perks, actives, KIT, looks),
+  the bench (unlock, 25 crafts, a Legendary), and serving every customer type. Lifetime numbers
+  live in `AST`; tests are one-liners in the `ACH` table, so adding one is a single row.
+
+**Build 15b.** THE MAP and ACHIEVEMENTS also sit in the Fixer's header (either side of the
+title), so they are reachable every night; both return to the Fixer. Lesson stock now counts
+what the player is *holding*: lifting the last lesson item off the shelf used to make a
+replacement appear behind it (day 1, second sale) — and on day 3, carrying the marked stack of
+three made two more pop up. Lesson goods now run out like any other stock.
+
+
+---
+
+## Appendix — build 16
+
+**Difficulty is flat from day 10.** Caravan gap bottoms out at **8.6 s** (was 7.5 s from day 12),
+customer gap at **3.54 s** (~28 a day; was 2.7 s, ~35). Patience already bottomed out at day 10.
+Rent keeps climbing. **Crates roll their size:** each carries a random 3 up to the day's ceiling
+(3 on days 1-3, +1 every three days, 6 from day 10), so late crates average 4.5 instead of a
+flat 6. Goods arriving per day from day 10: about 55 (was ~84) against ~28 buyers.
+
+**Painted Sign:** +5 % per level (max +15 %), 150 / 400 / 800c (was +15 % per level, 155/245/350).
+
+**SIGNAL FIRE — sixth active, key 6, 800c, 60 s rest.** Caravans hurry in 10 % faster for 20 s
+(`SIGNAL_BOOST`, `SIGNAL_TIME`). Sold from its own card in the Fixer grid next to HIRE A HAND.
+Honest size of it: 20 s at +10 % moves the caravan clock by 2 s — under a quarter of one crate
+per use, roughly +2 goods a day if fired on cooldown. The "own every active" achievement is now
+EVERY TRICK.
+
+**TRANSPORT** (fifth button in the Fixer's bottom row, `TRANSPORT n/4`; screen titled THE YARD).
+THE STRIDER is a six-legged walker; the hull is there from the start, and four parts bolt on
+visibly (missing ones show as pale blueprints): **Turbine Engine 3000c** (block + twin stacks,
+smokes once fitted), **Hydraulic Legs 4000c** (it sits on yard blocks until then), **Roof Gun
+2500c**, **Cargo Hold 2000c** — 11,500c in all, per run. Complete, she idles, the cockpit lights,
+and SEE THE ROAD opens the map with the Dustwell→Saltpan leg lit and Saltpan marked reachable.
+Travelling itself is not built — the other towns exist only on the map — and the screen says so.
+
+
+---
+
+## Appendix — build 17: the town page
+
+**Every day now starts from DUSTWELL**, a hub page (`scene 'hub'`): a small dusk skyline of the
+town in the middle (`buildCity`, gate lamps flicker), doors either side, and the big
+`OPEN THE STALL · DAY n` button underneath. Left: **THE FIXER**, **THE WORKBENCH** (or
+`WORKBENCH · 1000c` with its tooltip), **TRANSPORT n/4**, **STALL & LOOKS**. Right: **THE LEDGER**,
+**THE MAP**, **ACHIEVEMENTS n/50**. A new run opens here too (`S.fresh`), before day 1.
+
+Flow: dusk report → (Herald on its days) → (ledger every fifth day) → **town** → day intro → day.
+Every sub-screen's back button, and Esc, returns to town; the Fixer lost its bottom row and its
+map/achievement buttons and gained `BACK TO TOWN`.
+
+**The Fixer** is now two clean blocks: six passives, then **all six actives together** — Counter
+Sweep 1, Steady Hands 2, Hard Patter 3, The Back Room 4, Hire a Hand 5, Signal Fire 6.
+
+**Key caps.** Each active shows its number in a large key cap: on its Fixer card (left, under the
+icon, labelled KEY; level pips moved to the top-right) and on the in-game rail (left of the icon).
+
+**Build 17b — shelf labels.** Clicking an empty shelf's sign used to cycle through *every* kind,
+so one stray click could turn TECH into a second ARMS shelf and leave tech with nowhere to go.
+A shelf can now only be relabelled to a kind that has **no shelf yet** (`freeLabel`). With four
+kinds and four shelves (day 1) there is nothing to swap to and the hint disappears; from day 2
+the click swaps in the one missing kind (usually JUNK) and back. An empty duplicate that already
+exists is repaired on sight (`fixDupShelves`), on the stall and at the workbench.
+
+**Build 17c — no JUNK.** The shop has four kinds for the whole game: ARMS, MEDS, CHOW, TECH
+(`SHOPCATS`). Caravans never bring junk, nobody asks for it, the day-2 "junk crates" notice and
+the ledger's JUNK row are gone. Scrap Plate, Duct Tape and Tin Cans no longer appear; the cans
+survive only as the worthless prop the day-1 lesson has you scrap. With four kinds and four
+shelves there is never anything to relabel to, so the "click to relabel" hint no longer shows.
+(Earlier sections of this document that mention a fifth category from day 2 are out of date.)
+
+
+---
+
+## Appendix — build 18
+
+**Key caps.** The number on every active skill is drawn as a keyboard key (`keycap()`): cream
+top face raised off a darker side wall, highlight on the top-left edge, dark legend, and a thin
+stripe in the perk's colour. Ready = cream, resting = greyed, not yet owned (Fixer) = dark.
+On the rail the key visibly goes down for a moment when the perk fires (`S.keyFx`).
+
+**Caravans come one at a time.** A caravan only rolls in when the yard is empty. If the timer
+(or Signal Fire) comes due while one is unloading, the next is held at the gate (`S.crateDue`)
+and sent as soon as the yard clears — nothing is lost, it just never stacks. The half-time rush is
+now **one BIG CARAVAN**: a larger gold-banded crate with a double roll (6 on days 1-3, 6-12 late)
+plus the same two extra customers. Every crate shows how many goods are still aboard (`x5`), and
+the NEXT CARAVAN panel reads `unloading...` / `at the gate` / `in 7s`.
+Measured: never more than one crate on screen over full days at day 2, 6 and 15 and a 10-day bot
+run; goods per day unchanged (about 27 / 38 / 58).

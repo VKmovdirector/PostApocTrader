@@ -3,3 +3,5 @@
 # rejected brush-art experiment (build 12) - kept locally only
 art-src/
 v12-build12.html
+# working copies identical to a numbered build
+*-before-*.html
