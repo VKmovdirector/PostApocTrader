@@ -15,7 +15,7 @@
 <script>
 "use strict";
 /* ================================================================
-   RUST & RATIONS  -  build 19 (pixel art; title screen, save slots, ESC menu; build 20 demand spread)
+   RUST & RATIONS  -  build 19 (pixel art; title screen, save slots, ESC menu)
    A wasteland trading post. Sort the caravan, serve the wasteland.
    Single file, canvas 2D, design resolution 1280x760.
    ================================================================ */
@@ -1061,22 +1061,10 @@ function spawnCustomer(){
   let freeRow;
   for(let i=0;i<queueRows();i++) if(!S.custs.some(c=>c.row===i)){ freeRow=i; break; }
   if(freeRow===undefined) return;
-  /* Spread the demand: nobody new asks for a kind that someone in the queue already wants, the same
-     face does not stand in the queue twice, and an arrival does not repeat the one before it. */
   const pool=TYPES.filter(t=>t.tier<=tierFor(S.day));
-  const live=S.custs.filter(c=>c.state==='walk'||c.state==='wait');
-  const taken=live.map(c=>c.want.cat), faces=live.map(c=>c.type.id), all=activeCats();
-  const open=tp=>all.filter(c=>tp.wants.indexOf(c)>=0&&taken.indexOf(c)<0);
-  const mixed=pool.slice().sort(()=>Math.random()-0.5);
-  const fresh=tp=>open(tp).some(c=>c!==S.lastWantCat);                 /* can ask for something other than the last arrival did */
-  const t = mixed.find(tp=>faces.indexOf(tp.id)<0&&fresh(tp)) || mixed.find(tp=>faces.indexOf(tp.id)<0&&open(tp).length)
-         || mixed.find(tp=>open(tp).length) || pick(pool);
-  let cats=open(t);
-  if(!cats.length) cats=all.filter(c=>t.wants.indexOf(c)>=0);
-  if(!cats.length) cats=all;
-  if(cats.length>1&&S.lastWantCat) cats=cats.filter(c=>c!==S.lastWantCat);
-  const cat=pick(cats);
-  S.lastWantCat=cat;
+  const t=pick(pool);
+  const cats=activeCats().filter(c=>t.wants.indexOf(c)>=0);
+  const cat=cats.length? pick(cats):pick(activeCats());
   let want, patMul=1;
   if(S.day>=BULK_DAY && Math.random()<BULK_CHANCE){
     const n=pick([2,3,3,3,4]);

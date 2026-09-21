@@ -1,4 +1,4 @@
-# RUST & RATIONS — design notes (build 18)
+# RUST & RATIONS — design notes (build 20)
 
 A trading-post game. You run the only stall in a dust-blown town. Caravans dump
 mixed salvage on your counter, wanderers queue at the window, and rent is due
@@ -988,3 +988,53 @@ plus the same two extra customers. Every crate shows how many goods are still ab
 the NEXT CARAVAN panel reads `unloading...` / `at the gate` / `in 7s`.
 Measured: never more than one crate on screen over full days at day 2, 6 and 15 and a 10-day bot
 run; goods per day unchanged (about 27 / 38 / 58).
+
+
+---
+
+## Appendix — build 19: front end
+
+**Title screen** (`scene 'title'`, the game boots here): the stall at dusk behind a dark wash,
+drifting dust, the logo, and five buttons — **NEW GAME, CONTINUE, OPTIONS, SETTINGS, EXIT**.
+CONTINUE is greyed until a save exists. EXIT shows a "shutters down" card (a browser tab cannot
+close itself unless a script opened it).
+
+**Save slots.** NEW GAME opens three slot cards; an occupied slot asks twice before it is
+overwritten. CONTINUE shows the same cards in load mode with day, chits, perks, workbench,
+Strider progress and the time saved. **The game saves itself every time you arrive on the town
+page** (`toHub` → `saveGame`), into `localStorage` `rustrations.slotN`: day, purse, perks, hand,
+actives, workbench (materials, unlocks, tray, anvil), shelves and counter (goods stored as
+id + rarity + hand-made), Strider parts, ledger history, lesson flags. A day in progress is not
+saved — leaving mid-day returns you to that morning. Losing the stall erases the slot.
+Looks and achievements stay shared across slots, as before.
+
+**New game flow:** slot → the how-to card (the old title card, now with a single **OK**) → day 1
+and its tutorial directly. The town page appears from the first night on.
+
+**ESC menu** (Esc or Space during the day, which pauses it; Esc on the town page):
+**CONTINUE, NEW GAME, ACHIEVEMENTS, SETTINGS, EXIT**. EXIT returns to the title screen (saving
+first when on the town page; mid-day it warns that today is not saved).
+
+**SETTINGS:** sound on/off (M still mutes), volume quiet/normal/loud, full screen, screen shake.
+**OPTIONS:** tutorials on/off (day 1, bulk orders, workbench), erase all saved games, reset
+achievements — both destructive ones ask twice. Stored in `rustrations.opts`.
+
+**Build 19b.** OPTIONS is gone from the title screen (NEW GAME · CONTINUE · SETTINGS · EXIT);
+its three rows moved into **SETTINGS**, which now lists sound, volume, full screen, screen
+shake, tutorials, erase all saved games, reset achievements. Same page from the ESC menu.
+
+
+---
+
+## Appendix — build 20: demand is spread across the shelves
+
+`spawnCustomer()` used to pick a customer type and then a category blindly, so three buyers in
+a row could all ask for MEDS (one queue in sixteen by chance, worse for the popular kinds) while
+three shelves sat idle. Now an arrival:
+1. never asks for a kind someone already in the queue wants (3 windows, 4 kinds — one is always free);
+2. is never the same type as someone already waiting (no twin WANDERERs);
+3. does not ask for what the previous arrival asked for.
+Exact-item (≈30-35 %) and bulk (≈15 %) odds, prices, patience and tiers are unchanged; lesson
+customers are scripted and unaffected. Measured over 20,000 arrivals each on days 2, 6 and 15:
+0 repeated kinds in the queue, 0 twins, 0 back-to-back repeats, and each kind gets 24-27 % of
+requests.
