@@ -15,7 +15,7 @@
 <script>
 "use strict";
 /* ================================================================
-   RUST & RATIONS  -  build 19 (pixel art; title screen, save slots, ESC menu; build 20 demand spread)
+   RUST & RATIONS  -  build 19 (pixel art) - build 25: music loop, 20% fewer goods off the road
    A wasteland trading post. Sort the caravan, serve the wasteland.
    Single file, canvas 2D, design resolution 1280x760.
    ================================================================ */
@@ -24,12 +24,15 @@ window.__errors=0; window.onerror=function(){ window.__errors++; };
 const W=1280, H=760;
 const cv=document.getElementById('c');
 const g=cv.getContext('2d');
-let VS=1, VX=0, VY=0;
+let VS=1, VX=0, VY=0, EXX=0, EXY=0;            /* EXX/EXY: design-space margin visible beyond the 1280x760 frame */
+/* the whole visible window in design units (with a pad for the screen shake) */
+function fullRect(){ return {x:-EXX-16,y:-EXY-16,w:W+2*EXX+32,h:H+2*EXY+32}; }
+function fillFull(style){ const r=fullRect(); g.fillStyle=style; g.fillRect(r.x,r.y,r.w,r.h); }
 function resize(){
   const dpr=Math.min(window.devicePixelRatio||1,2);
   const cw=window.innerWidth, ch=window.innerHeight;
   cv.width=Math.floor(cw*dpr); cv.height=Math.floor(ch*dpr);
-  VS=Math.min(cw/W, ch/H); VX=(cw-W*VS)/2; VY=(ch-H*VS)/2;
+  VS=Math.min(cw/W, ch/H); VX=(cw-W*VS)/2; VY=(ch-H*VS)/2; EXX=VX/VS; EXY=VY/VS;
   g.setTransform(dpr,0,0,dpr,0,0);
   g.imageSmoothingEnabled=false;
 }
@@ -127,7 +130,9 @@ function bar(x,y,w,h,k,col,bg){
 /* ---------------- audio ---------------- */
 const Snd={
   ctx:null,on:true,
-  init(){ if(!this.ctx){ try{ this.ctx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} } },
+  init(){ if(!this.ctx){ try{ this.ctx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} }
+    if(this.ctx&&this.ctx.state==='suspended'){ try{ this.ctx.resume(); }catch(e){} }
+    if(typeof Music!=='undefined') Music.apply(); },
   tone(f,dur,type,vol,f2){
     if(!this.on||!this.ctx) return;
     const t=this.ctx.currentTime,o=this.ctx.createOscillator(),gn=this.ctx.createGain();
@@ -525,6 +530,7 @@ function charSprite(t){
    SCENE - the stall, drawn once at quarter resolution (320x190)
    ================================================================ */
 let SCENE=null;
+let SCENE_EDGE=null;                       /* one column of just the sky and ground bands: what the margins show on a wide window */
 function buildScene(){
   const sc=makeCanvas(320,190), x=sc.getContext('2d');
   const px=(a,b,w,h,c)=>{ x.fillStyle=c; x.fillRect(Math.round(a),Math.round(b),Math.round(w),Math.round(h)); };
@@ -533,6 +539,8 @@ function buildScene(){
   const sky=['#241f3a','#2b2340','#332845','#3d2d48','#48334a','#553849','#644046','#744842','#86513d','#985a39','#aa663a','#bb7440','#c9854b'];
   for(let i=0;i<sky.length;i++) px(0,i*6,320,7,sky[i]);
   px(0,78,320,6,'#d2954f');
+  { SCENE_EDGE=makeCanvas(1,190); const e=SCENE_EDGE.getContext('2d'), ep=(b,h,c)=>{ e.fillStyle=c; e.fillRect(0,b,1,h); };
+    sky.forEach((c,i)=>ep(i*6,7,c)); ep(78,6,'#d2954f'); ep(82,10,'#6b4c33'); ep(92,16,'#5b3f2b'); ep(108,34,'#4c3423'); ep(142,48,'#3d2a1c'); }
   for(let i=0;i<30;i++){ const sx=(i*71)%320, sy=(i*23)%26; px(sx,sy,1,1,'rgba(255,240,210,0.45)'); }
   // clouds
   [[210,16,26],[264,10,18],[178,24,14],[290,26,20]].forEach(c=>{
@@ -856,7 +864,7 @@ function selValid(){
 }
 function bundleFits(c,list){
   const w=c.want;
-  if(!w||w.kind!=='bundle'||list.length<w.n) return false;
+  if(!w||w.kind!=='bundle'||list.length!==w.n) return false;      /* exactly the number asked: four is not three */
   return list.every(b=> w.item ? b.item.id===w.item.id : b.item.cat===w.cat );
 }
 function bundleProgress(c){
@@ -902,12 +910,11 @@ S.look={hat:'brim',coat:'#7a5a38',face:'bandana',awning:'#b8502f',pattern:'plain
 S.worn=Object.assign({},S.look);
 S.owned={}; LOOKCATS.forEach(k=>LOOKS[k].forEach(o=>{ if(o.cost===0) S.owned[k+':'+o.id]=1; }));
 S.editName=false;
-function saveLook(){ try{ localStorage.setItem('rustrations.look',JSON.stringify({look:S.worn,owned:S.owned})); }catch(e){} }
-(function(){ try{ const r=localStorage.getItem('rustrations.look');
-  if(r){ const d=JSON.parse(r);
-    if(d.look) Object.assign(S.look,d.look);
-    if(d.owned) Object.assign(S.owned,d.owned);
-    S.worn=Object.assign({},S.look); } }catch(e){} })();
+const LOOK_DEFAULT=Object.assign({},S.look);
+function saveLook(){ saveGame(); }                        /* the look belongs to the save slot */
+function setSign(s){ S.look.sign=s; S.worn.sign=s; }     /* the save serialises S.worn, so the name lives in both */
+function lookReset(){ S.look=Object.assign({},LOOK_DEFAULT); S.worn=Object.assign({},S.look);
+  S.owned={}; LOOKCATS.forEach(k=>LOOKS[k].forEach(o=>{ if(o.cost===0) S.owned[k+':'+o.id]=1; })); S.editName=false; invalidateLook(); }
 function invalidateLook(){ SCENE=null; TRADER_KEY=''; }
 function ownsLook(cat,opt){ return !!S.owned[cat+':'+opt.id]; }
 function lookOpen(opt){ return S.day>=(opt.un||1); }
@@ -950,8 +957,11 @@ function activeCats(){ return SHOPCATS.slice(); }
 const dayLenFor  = d => 90;
 const rentFor    = d => Math.round(50 + 9*Math.pow(d-1,1.15));
 const custEvery  = d => d===1? 7.0 : Math.max(3.54, 6.6-0.34*(d-1));   /* flat from day 10 */
-const crateEvery = d => Math.max(8.6, 14-0.6*(d-1));                  /* flat from day 10 */
-const crateSize  = d => Math.min(6, 3+Math.floor((d-1)/3));            /* the most a crate can hold that day; each one rolls 3..this */
+let CRATE_RATE=1.15, CRATE_LOAD=0.8;                                     /* build 25: lighter crates (and a slower road if needed) - tuned by the bot */
+function crateLoad(d,n){ return Math.max(d<=3?3:2, Math.round(n*CRATE_LOAD)); }   /* what a crate really carries after the cut */
+const crateEvery = d => Math.max(8.6, 14-0.6*(d-1))*CRATE_RATE;       /* flat from day 10 */
+const crateSize  = d => Math.min(6, 3+Math.floor((d-1)/3));            /* the most a crate can hold that day; each one rolls crateLo..this */
+const crateLo    = d => d<=3 ? 3 : 2;                                  /* build 23: from day 4 a crate can be as light as 2 (about 12% less stock) */
 const CHICORY=[0,0.02,0.05,0.08];
 const patScale   = d => Math.max(0.68, 1-0.035*(d-1)) * (1+CHICORY[S.up.coffee]);
 const tierFor    = d => d<3?1:(d<5?2:3);
@@ -1034,8 +1044,11 @@ function rollItem(){
   return it;
 }
 /* Only ever one caravan in the yard. big = the half-time load: a double roll in a bigger crate. */
+/* after a crate is unloaded the road rests: 2 s per piece, 6 s at least (3 pieces 6 s, 6 pieces 12 s, the big 12 pieces 24 s) */
+function crateRestFor(n){ return Math.max(6,2*n); }
+function crateResting(){ return S.dayTime<(S.crateRest||0); }
 function spawnCrate(big){
-  const n=big ? ri(3,crateSize(S.day))*2 : ri(3,crateSize(S.day)), items=[];
+  const lo=crateLo(S.day), hi=crateSize(S.day), n=crateLoad(S.day, big ? ri(lo,hi)*2 : ri(lo,hi)), items=[];
   for(let i=0;i<n;i++) items.push(rollItem());
   const cb=counterBlock();
   S.crates.push({x:-170,y:cb.y-(big?14:4),t:0,items:items,state:'in',big:!!big,n:n});
@@ -1103,7 +1116,7 @@ function salePrice(cust,entry,haggle){
   const src = entry.src==='shelf' ? (entry.misfiled?0.5:1.0) : 0.6;
   const wantM = (cust.want.kind==='item'||(cust.want.kind==='bundle'&&cust.want.item)) ? 1.4 : 1.0;
   const patter = S.patterT>0 ? 1.5 : 1;
-  const it=entry.item, v=(it.base||it).v*RAR[Math.min(it.r||0,purseR(cust))].m*(it.crafted?CRAFT.mult:1);
+  const it=entry.item, v=(it.base||it).v*RAR[Math.min(it.r||0,purseR(cust))].m*(it.crafted?CRAFT.mult:1)*evMult(it.cat);
   return Math.max(1, Math.round(0.5*patter*v*src*wantM*cust.type.pay*priceMults().sign*comboMult()
                   *(1+(haggle||0))*(1+(entry.bonus||0))));
 }
@@ -1136,15 +1149,14 @@ const MATS=[
   {id:'relic', n:'Relic Core',c:384, unlock:2000,day:10, pal:{a:'#e8b13c',b:'#fff0b0'}, px:['...kk...','..kbbk..','.kbbbak.','kbbbaaak','kabaaaak','.kaaaak.','..kaak..','...kk...']}
 ];
 const MATBY={}; MATS.forEach(m=>{ MATBY[m.id]=m; m.spr=spriteFrom(m.px,Object.assign({k:'#1a1410'},m.pal)); });
-/* item id -> [material A, material B, workbench-day the recipe opens, how many one craft yields]
-   Goods sell at about half their value, so the cheap ones come out in pairs or they would never pay. */
+/* item id -> [material A, material B, workbench-day the recipe opens, how many one craft yields (one, since build 24)] */
 const RECIPES={
-  pipegun:['scrap','timber',1,1], bandage:['cloth','herbs',1,2], beans:['grain','glass',1,2], board:['cloth','wire',1,2],
-  cans:['grain','scrap',2,2],     shells:['scrap','chem',2,2],
+  pipegun:['scrap','timber',1,1], bandage:['cloth','herbs',1,1], beans:['grain','glass',1,1], board:['cloth','wire',1,1],
+  cans:['grain','scrap',2,1],     shells:['scrap','chem',2,1],
   stimpak:['glass','chem',3,1],   water:['glass','cloth',3,1],
-  cell:['wire','scrap',4,1],      tape:['cloth','cloth',4,2],
-  knife:['scrap','cloth',5,1],    mutfruit:['grain','grain',5,2],
-  radaway:['herbs','glass',6,1],  terminal:['wire','glass',6,1], scrap:['scrap','scrap',6,2]
+  cell:['wire','scrap',4,1],      tape:['cloth','cloth',4,1],
+  knife:['scrap','cloth',5,1],    mutfruit:['grain','grain',5,1],
+  radaway:['herbs','glass',6,1],  terminal:['wire','glass',6,1], scrap:['scrap','scrap',6,1]
 };
 ITEMS.forEach(it=>{ it.r=0; it.base=it; });
 const VARIANT={};
@@ -1166,7 +1178,7 @@ function unlockMat(m){
 }
 /* demo: the workshop is this morning. main game: it is tonight, stocking for tomorrow, and the
    recipe / tier calendar counts from the day the bench was bought. */
-function effDay(){ return CRAFT.demo ? S.day : S.day+1; }
+function effDay(){ return S.day; }                        /* the town page already is the trading day */
 function craftDay(){ return CRAFT.demo ? S.day : Math.max(1,effDay()-S.wbDay+1); }
 function recipeOpen(it){ return craftDay()>=RECIPES[it.id][2]; }
 function openItems(cat){ return BYCAT[cat].filter(recipeOpen); }
@@ -1226,6 +1238,7 @@ function canUpgrade(item){
   if(!item) return 'empty';
   const r=(item.r||0)+1;
   if(r>3) return 'max';
+  if(!recipeOpen(item.base||item)) return 'recipe';         /* what you cannot make yet you cannot refine yet */
   if(craftDay()<RAR[r].day) return 'day';
   { const ub=upgradeBill(item); for(const k in ub) if(MATBY[k].unlock&&!S.unl[k]) return 'lock'; }
   return billMissing(upgradeBill(item)) ? 'short' : 'ok';
@@ -1245,7 +1258,9 @@ const WS={mk:{x:16,y:70,w:290,h:676}, wb:{x:318,y:70,w:440,h:676}, sh:{x:770,y:7
 function anvilRect(){ return {x:WS.wb.x+18,y:WS.wb.y+330,w:96,h:96}; }
 function trayRect(i){ return {x:WS.wb.x+16+(i%6)*69,y:WS.wb.y+512+Math.floor(i/6)*54,w:64,h:50}; }
 function binRect(){ return trayRect(17); }
-function wsShelfRect(i){ return {x:WS.sh.x+12,y:WS.sh.y+44+i*132,w:WS.sh.w-24,h:126}; }
+function wsShelfRect(i){ return {x:WS.sh.x+12,y:WS.sh.y+44+i*110,w:WS.sh.w-24,h:104}; }
+function wsCounterRect(){ return {x:WS.sh.x+12,y:WS.sh.y+44+4*110+2,w:WS.sh.w-24,h:88}; }
+function wsCounterSlot(j){ const r=wsCounterRect(), k=S.cslots, sw=Math.floor((r.w-(k-1)*6)/k); return {x:r.x+j*(sw+6),y:r.y+22,w:sw,h:r.h-22}; }
 function wsSlotRect(i,j){ const r=wsShelfRect(i), sw=Math.floor((r.w-18)/4); return {x:r.x+j*(sw+6),y:r.y+24,w:sw,h:r.h-24}; }
 function wsStocked(){ return stockCount()>0; }
 function wsStep(){
@@ -1259,6 +1274,7 @@ function wsStep(){
 function wsPick(x,y){
   for(let i=0;i<17;i++) if(S.tray[i]&&inRect(x,y,trayRect(i))){ S.wd={item:S.tray[i],from:{k:'tray',i:i},x:x,y:y}; S.tray[i]=null; Snd.ui(); return; }
   if(S.anvil&&inRect(x,y,anvilRect())){ S.wd={item:S.anvil,from:{k:'anvil'},x:x,y:y}; S.anvil=null; Snd.ui(); return; }
+  for(let j=0;j<S.cslots;j++){ const e=S.counter[j]; if(e&&inRect(x,y,wsCounterSlot(j))){ S.wd={item:e.item,from:{k:'counter',i:j},x:x,y:y}; S.counter[j]=null; Snd.ui(); return; } }
   for(let i=0;i<S.shelves.length;i++){
     const hr=wsShelfRect(i);
     if(inRect(x,y,{x:hr.x,y:hr.y,w:hr.w,h:22})&&!S.shelves[i].slots.some(s=>s)){
@@ -1271,6 +1287,7 @@ function wsPick(x,y){
 function wsPut(to,item){
   if(to.k==='tray') S.tray[to.i]=item;
   else if(to.k==='anvil') S.anvil=item;
+  else if(to.k==='counter') S.counter[to.i]={item:item,arriving:0,anim:0,misfiled:false};
   else { const sh=S.shelves[to.i]; sh.slots[to.j]={item:item,misfiled:sh.cat!==item.cat,arriving:0,anim:1}; }
 }
 function wsDrop(x,y){
@@ -1279,6 +1296,7 @@ function wsDrop(x,y){
   if(inRect(x,y,anvilRect())&&!S.anvil) to={k:'anvil'};
   if(inRect(x,y,binRect())){ scrapItem(d.item); return; }
   for(let i=0;i<17&&!to;i++) if(!S.tray[i]&&inRect(x,y,trayRect(i))) to={k:'tray',i:i};
+  for(let j=0;j<S.cslots&&!to;j++) if(!S.counter[j]&&inRect(x,y,wsCounterSlot(j))) to={k:'counter',i:j};
   for(let i=0;i<S.shelves.length&&!to;i++) for(let j=0;j<4&&!to;j++)
     if(!S.shelves[i].slots[j]&&inRect(x,y,wsSlotRect(i,j))) to={k:'shelf',i:i,j:j};
   if(!to){ wsPut(d.from,d.item); Snd.drop(); return; }
@@ -1291,6 +1309,7 @@ function wsDrop(x,y){
 function wsScrapAt(x,y){
   for(let i=0;i<17;i++) if(S.tray[i]&&inRect(x,y,trayRect(i))){ const it=S.tray[i]; S.tray[i]=null; scrapItem(it); return true; }
   if(S.anvil&&inRect(x,y,anvilRect())){ const it=S.anvil; S.anvil=null; scrapItem(it); return true; }
+  for(let j=0;j<S.cslots;j++){ const e=S.counter[j]; if(e&&inRect(x,y,wsCounterSlot(j))){ S.counter[j]=null; scrapItem(e.item); return true; } }
   for(let i=0;i<S.shelves.length;i++) for(let j=0;j<4;j++){ const e=S.shelves[i].slots[j];
     if(e&&inRect(x,y,wsSlotRect(i,j))){ S.shelves[i].slots[j]=null; scrapItem(e.item); return true; } }
   return false;
@@ -1372,6 +1391,8 @@ function drawWorkshop(){
   const ix=a.x+a.w+16, iw=wb.x+wb.w-14-ix;
   if(st==='empty') wrapText('Drag a finished object onto the anvil and pay extra materials to lift it a tier. Rich buyers pay for it; poor ones cannot.',ix,a.y+14,iw,16,10,C.dim);
   else if(st==='max') txt('LEGENDARY. Nothing finer.',ix,a.y+20,13,RAR[3].col);
+  else if(st==='recipe'){ const dd=RECIPES[(S.anvil.base||S.anvil).id][2]-craftDay();
+    txt('NOT YET',ix,a.y+10,14,C.dimmer); wrapText('You cannot refine what you cannot make. This recipe opens in '+dd+' day'+(dd>1?'s':'')+'.',ix,a.y+32,iw,16,10,C.dim); }
   else {
     const nr=S.anvil.r+1, nb=upgradeBill(S.anvil), nv=rar(S.anvil,nr).v;
     txt('TO '+RAR[nr].n,ix,a.y+10,14,RAR[nr].col);
@@ -1411,10 +1432,17 @@ function drawWorkshop(){
         if(e.misfiled){ g.fillStyle=C.red; g.fillRect(q.x+q.w-28,q.y+3,25,12); txt('MIS',q.x+q.w-15,q.y+9,10,'#1a1410','center'); } }
     }
   });
+  { const cr=wsCounterRect();                                   /* the unsorted counter, as it will be at dawn */
+    g.fillStyle='rgba(0,0,0,0.25)'; g.fillRect(cr.x,cr.y,cr.w,22);
+    txt('UNSORTED - THE COUNTER',cr.x+6,cr.y+11,13,C.dim);
+    const cnt=(S.counter||[]).filter(Boolean).length; txt(cnt+'/'+S.cslots,cr.x+cr.w-6,cr.y+11,12,cnt?C.ink:C.dimmer,'right');
+    for(let j=0;j<S.cslots;j++){ const q=wsCounterSlot(j), e=S.counter[j];
+      wsCell(q,S.wd&&!e&&inRect(MX,MY,q));
+      if(e){ rarFrame(q,e.item); drawItem(e.item,q.x+q.w/2,q.y+q.h/2-6,2); txt(fitText(e.item.n,q.w-6,8,'normal'),q.x+q.w/2,q.y+q.h-9,8,C.dim,'center','normal'); } } }
   const guide=[['1 · BUY MATERIALS','The market is on the left.'],['2 · CLICK A RECIPE','The workbench turns two materials into goods.'],
                ['3 · DRAG IT TO A SHELF','Or onto the anvil first, to refine it.'],['4 · STOCKED',CRAFT.demo?'Open the stall when you are ready.':'Head back when you are done.']][step-1];
-  if(!WT.on){ txt(guide[0],sh.x+sh.w/2,sh.y+578,13,C.gold,'center'); txt(guide[1],sh.x+sh.w/2,sh.y+594,10,C.ink,'center','normal'); }
-  txt('rent '+(CRAFT.demo?'tonight ':'tomorrow ')+rentFor(effDay())+'c  ·  spent on materials '+S.cr.daySpent+'c',sh.x+sh.w/2,sh.y+610,10,C.dim,'center','normal');
+  if(!WT.on){ txt(guide[0],sh.x+sh.w/2,sh.y+584,13,C.gold,'center'); txt(guide[1],sh.x+sh.w/2,sh.y+598,10,C.ink,'center','normal'); }
+  txt('rent tonight '+rentFor(effDay())+'c  ·  spent on materials '+S.cr.daySpent+'c',sh.x+sh.w/2,sh.y+612,10,C.dim,'center','normal');
   const has=wsStocked()||S.tray.some(x=>x);
   button(sh.x+sh.w/2-150,sh.y+sh.h-56,300,46,CRAFT.demo?(has?'OPEN THE STALL':'OPEN WITH NOTHING TO SELL'):'BACK TO TOWN',
          ()=>{ if(S.wd){ wsPut(S.wd.from,S.wd.item); S.wd=null; } WT.on=false; WT.done=true;      /* one lesson, one starter kit */
@@ -1495,8 +1523,9 @@ function drawSummary(){
    ================================================================ */
 const AST={};                       /* lifetime numbers the tests read */
 let ACH_GOT={}, TOASTS=[];
-try{ const sv=JSON.parse(localStorage.getItem('rustrations.ach')||'null'); if(sv){ Object.assign(AST,sv.st||{}); ACH_GOT=sv.got||{}; } }catch(e){}
-function achSave(){ try{ localStorage.setItem('rustrations.ach',JSON.stringify({st:AST,got:ACH_GOT})); }catch(e){} }
+try{ localStorage.removeItem('rustrations.ach'); localStorage.removeItem('rustrations.look'); }catch(e){}   /* build 22: both live in the save slot now */
+function achSave(){ saveGame(); }
+function achReset(){ Object.keys(AST).forEach(k=>delete AST[k]); ACH_GOT={}; TOASTS=[]; }   /* a new game starts from nothing */
 const n0=k=>AST[k]||0;
 const ACH=[
  /* trade */
@@ -1583,7 +1612,7 @@ function drawToasts(dt){
 function openPage(scene){ S.backScene=S.scene; S.scene=scene; S.sceneT=0; }
 function closePage(){ S.scene=S.backScene||'menu'; S.sceneT=0; }
 function drawAchievements(){
-  g.fillStyle='#0d0a08'; g.fillRect(0,0,W,H);
+  fillFull('#0d0a08');
   txt('ACHIEVEMENTS',40,40,28,C.gold);
   txt(achCount()+' of '+ACH.length+' earned  ·  kept between runs',40,70,12,C.dim,'left','normal');
   bar(W-460,30,300,18,achCount()/ACH.length,C.gold);
@@ -1599,7 +1628,7 @@ function drawAchievements(){
 }
 
 /* ================================================================
-   THE MAP  -  five towns in the barrens. Only Dustwell is open yet;
+   THE MAP  -  three towns in the barrens. Only Dustwell is open yet;
    the others are where the road goes next.
    ================================================================ */
 const TOWNS=[
@@ -1607,14 +1636,10 @@ const TOWNS=[
   d:'A well, a wall and a council that wants its rent. Everyone passes through; nobody is rich.', wants:'a bit of everything'},
  {id:'saltpan', n:'SALTPAN',     x:146,y:58,  road:'3 days north-east',
   d:'Salt miners on the bed of a dead lake. Cracked hands, cracked lips, steady pay.', wants:'clean water and meds'},
- {id:'cinder',  n:'CINDER GAP',  x:236,y:98,  road:'5 days east',
-  d:'A mountain pass held by raiders who found that tolls pay better than raids. Short tempers.', wants:'arms, and quickly'},
- {id:'meridian',n:'OLD MERIDIAN',x:180,y:152, road:'4 days south-east',
-  d:'The drowned city. Scavengers haul machines out of towers that lean a little further every year.', wants:'tech, and sells it cheap'},
- {id:'lastpump',n:'LAST PUMP',   x:286,y:40,  road:'9 days, the end of the road',
-  d:'The only deep pump left working. Rich, thirsty, and a long way from anywhere.', wants:'the finest goods you can make'}
+ {id:'cinder',  n:'CINDER GAP',  x:236,y:98,  road:'5 days east, past the salt',
+  d:'A mountain pass held by raiders who found that tolls pay better than raids. Short tempers.', wants:'arms, and quickly'}
 ];
-const ROUTES=[[0,1],[0,3],[1,2],[3,2],[2,4]];
+const ROUTES=[[0,1],[1,2]];
 let MAP_IMG=null;
 function buildMap(){
   const c=makeCanvas(320,190), x=c.getContext('2d');
@@ -1636,9 +1661,6 @@ function buildMap(){
     for(let k=0;k<mh;k++){ px(mx-k*0.6,my-mh+k,k*1.2+1,1,k<mh*0.3?'#8a7560':'#6b5a48'); px(mx,my-mh+k,k*0.6+1,1,'#54463a'); } }
   /* dry river */
   let rx=0, ry=172; for(let i=0;i<130;i++){ px(rx,ry,3,2,'#8f7a58'); px(rx,ry,2,1,'#7a6648'); rx+=2.5; ry+=Math.sin(i*0.22)*1.3-0.5; }
-  /* the drowned city */
-  for(let i=0;i<16;i++){ const bx=166+rnd2()*34, bh=5+rnd2()*12; px(bx,160-bh,3+rnd2()*3,bh,'#5a5148'); px(bx,160-bh,1,bh,'#7a7064'); }
-  px(160,158,50,4,'#6f8a8a'); px(164,161,40,2,'#57706f');
   /* crater and bones */
   for(let yy=-7;yy<=7;yy++){ const w=Math.floor(Math.sqrt(49-yy*yy)*1.6); px(96-w,44+yy,w*2,1,yy<0?'#8a6f48':'#a5864f'); }
   /* caravan routes */
@@ -1651,7 +1673,6 @@ function buildMap(){
     px(tx-6,ty-2,5,5,'#6b4a2a'); px(tx-6,ty-3,5,1,'#a8562a'); px(tx,ty-4,6,7,'#5a3f28'); px(tx,ty-5,6,1,'#c8703a');
     px(tx-1,ty+1,2,2,'#f0c060');
     if(tn.home){ px(tx+7,ty-10,1,11,'#2a1f14'); px(tx+8,ty-10,5,3,'#a8382a'); }
-    if(tn.id==='lastpump'){ px(tx-10,ty-8,1,10,'#3a3129'); px(tx-13,ty-9,7,1,'#3a3129'); }
   });
   /* frame and compass */
   px(0,0,320,2,'#2a1f14'); px(0,188,320,2,'#2a1f14'); px(0,0,2,190,'#2a1f14'); px(318,0,2,190,'#2a1f14');
@@ -1661,11 +1682,11 @@ function buildMap(){
 function drawMap(){
   if(!MAP_IMG) MAP_IMG=buildMap();
   g.imageSmoothingEnabled=false;
-  g.drawImage(MAP_IMG,0,0,W,H);
-  g.fillStyle='rgba(20,14,8,0.18)'; g.fillRect(0,0,W,H);
+  fillFull('#1a1410'); g.drawImage(MAP_IMG,0,0,W,H);
+  fillFull('rgba(20,14,8,0.18)');
   plate(W/2-210,14,420,54,'#1a1410','#6b5540');
   txt('THE BARRENS',W/2,34,22,C.gold,'center');
-  txt('five towns, one road  ·  only Dustwell is open to you so far',W/2,56,10,C.dim,'center','normal');
+  txt('three towns, one road  ·  only Dustwell is open to you so far',W/2,56,10,C.dim,'center','normal');
   txt('N',100,52,12,'#2a1f14','center');
   { const rc=(S.rig?rigCount():0), ok=S.rig&&rigDone(); plate(W-330,20,166,40,'#1a1410',ok?C.gold:'#5c4a37'); txt('STRIDER '+rc+'/'+RIG.length,W-247,40,12,ok?C.gold:C.dim,'center');
     if(ok&&Math.sin(S.t*5)>-0.3){ const a=TOWNS[0], b=TOWNS[1]; g.strokeStyle=C.gold; g.lineWidth=4; g.setLineDash([14,10]); g.beginPath(); g.moveTo(a.x*4,a.y*4); g.lineTo(b.x*4,b.y*4); g.stroke(); g.setLineDash([]); } }
@@ -1695,6 +1716,7 @@ function drawMap(){
    a six-legged walker, and the Strider is how you leave Dustwell.
    (Leaving is not built yet: the other towns are still only on the map.)
    ================================================================ */
+const RIG_DAY=15;                                     /* the yard opens on day 15 */
 const RIG=[
  {id:'engine',n:'TURBINE ENGINE', cost:3000, d:'Pulled from a grounded flyer. Drinks anything that burns.'},
  {id:'legs',  n:'HYDRAULIC LEGS', cost:4000, d:'Six of them, all from different machines. It sits on blocks until they go on.'},
@@ -1786,9 +1808,83 @@ function drawTransport(){
 /* ================================================================
    FRONT END  -  title screen, save slots, options, settings, ESC menu
    ================================================================ */
-const OPT={sound:true, vol:2, shake:true, tutorials:true};
+/* ================================================================
+   MUSIC  -  one slow loop, made on the spot: a walking bass, a thin pad, a plucked
+   lead in A minor with a little echo, and a dry kick and shaker. 84 bpm, 8 bars.
+   ================================================================ */
+const Music={
+  on:false, ctx:null, master:null, lead:null, next:0, step:0, timer:null, chordOn:null,
+  BPM:84, STEPS:128,
+  ROOTS:[110,87.31,130.81,98],                                     /* Am  F  C  G, two bars each */
+  CHORDS:[[220,261.63,329.63],[174.61,220,261.63],[261.63,329.63,392],[196,246.94,293.66]],
+  MEL:(function(){ const A4=440,C5=523.25,D5=587.33,E5=659.25,G5=783.99,G4=392,_=0;
+    return [A4,_,_,_,C5,_,_,_,D5,_,_,_,_,_,_,_, E5,_,_,_,_,_,D5,_,C5,_,_,_,A4,_,_,_,
+            A4,_,_,_,_,_,_,_,C5,_,_,_,E5,_,_,_, D5,_,_,_,C5,_,_,_,A4,_,_,_,_,_,_,_,
+            E5,_,_,_,_,_,_,_,G5,_,_,_,E5,_,_,_, D5,_,_,_,C5,_,_,_,_,_,_,_,_,_,_,_,
+            D5,_,_,_,_,_,_,_,G4,_,_,_,A4,_,_,_, _,_,_,_,_,_,_,_,C5,_,_,_,_,_,_,_]; })(),
+  vol(){ return 0.16*(Snd.vol||1); },
+  apply(){
+    const want=!!(OPT.music&&OPT.sound&&Snd.ctx);
+    if(want&&!this.on) this.start();
+    else if(!want&&this.on) this.stop();
+    else if(this.on&&this.master) this.master.gain.setTargetAtTime(this.vol(),this.ctx.currentTime,0.1);
+  },
+  start(){
+    const c=Snd.ctx; if(!c) return; this.ctx=c; this.on=true;
+    this.master=c.createGain(); this.master.gain.setValueAtTime(0.0001,c.currentTime);
+    this.master.gain.exponentialRampToValueAtTime(this.vol(),c.currentTime+2); this.master.connect(c.destination);
+    const lf=c.createBiquadFilter(); lf.type='lowpass'; lf.frequency.value=1600; lf.connect(this.master);
+    const dl=c.createDelay(1); dl.delayTime.value=60/this.BPM*0.75; const fb=c.createGain(); fb.gain.value=0.3;
+    dl.connect(fb); fb.connect(dl); dl.connect(this.master); lf.connect(dl);
+    this.lead=lf;
+    this.next=c.currentTime+0.1; this.step=0; this.chordOn=null;
+    this.timer=setInterval(()=>this.sched(),110);
+  },
+  stop(){
+    this.on=false; clearInterval(this.timer); this.timer=null;
+    if(this.master){ const m=this.master, c=this.ctx; m.gain.setTargetAtTime(0.0001,c.currentTime,0.25); setTimeout(()=>{ try{ m.disconnect(); }catch(e){} },1200); }
+    if(this.chordOn){ this.chordOn.forEach(o=>{ try{ o.stop(this.ctx.currentTime+1); }catch(e){} }); this.chordOn=null; }
+    this.master=null;
+  },
+  sched(){
+    if(!this.on) return;
+    const c=this.ctx, dt=60/this.BPM/4;
+    while(this.next<c.currentTime+0.35){ this.play(this.step,this.next); this.step=(this.step+1)%this.STEPS; this.next+=dt; }
+  },
+  osc(type,f,t,dur,vol,dest,f2){
+    const c=this.ctx, o=c.createOscillator(), g2=c.createGain();
+    o.type=type; o.frequency.setValueAtTime(f,t); if(f2) o.frequency.exponentialRampToValueAtTime(f2,t+dur);
+    g2.gain.setValueAtTime(0.0001,t); g2.gain.exponentialRampToValueAtTime(vol,t+0.015); g2.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+    o.connect(g2); g2.connect(dest||this.master); o.start(t); o.stop(t+dur+0.05); return o;
+  },
+  noise(t,dur,vol,hp){
+    const c=this.ctx, n=Math.floor(c.sampleRate*dur), b=c.createBuffer(1,n,c.sampleRate), d=b.getChannelData(0);
+    for(let i=0;i<n;i++) d[i]=(Math.random()*2-1)*(1-i/n);
+    const s=c.createBufferSource(); s.buffer=b; const f=c.createBiquadFilter(); f.type=hp?'highpass':'bandpass'; f.frequency.value=hp||1800;
+    const g2=c.createGain(); g2.gain.value=vol; s.connect(f); f.connect(g2); g2.connect(this.master); s.start(t);
+  },
+  play(step,t){
+    const bar=Math.floor(step/16), b16=step%16, ch=Math.floor(bar/2)%4, dt=60/this.BPM/4;
+    if(b16===0&&bar%2===0){                                                   /* the pad changes with the chord */
+      if(this.chordOn) this.chordOn.forEach(o=>{ try{ o.stop(t+0.6); }catch(e){} });
+      this.chordOn=this.CHORDS[ch].map((f,i)=>{
+        const c=this.ctx, o=c.createOscillator(), g2=c.createGain(), lp=c.createBiquadFilter();
+        o.type='sawtooth'; o.frequency.value=f; o.detune.value=(i-1)*6; lp.type='lowpass'; lp.frequency.value=520;
+        g2.gain.setValueAtTime(0.0001,t); g2.gain.exponentialRampToValueAtTime(0.028,t+0.9); g2.gain.setTargetAtTime(0.0001,t+dt*30,0.5);
+        o.connect(lp); lp.connect(g2); g2.connect(this.master); o.start(t); o.stop(t+dt*32+1); return o; });
+    }
+    const root=this.ROOTS[ch];
+    if(b16===0||b16===8) this.osc('triangle',root,t,dt*6,0.30);            /* bass */
+    if(b16===12&&bar%2===1) this.osc('triangle',root*1.5,t,dt*3,0.18);
+    if(b16===0||b16===10) this.osc('sine',110,t,0.22,0.55,null,38);         /* kick */
+    if(b16===8) this.noise(t,0.14,0.12);                                    /* snare-ish */
+    if(b16%4===2) this.noise(t,0.05,0.05,7000);                             /* shaker */
+    const m=this.MEL[step%64]; if(m) this.osc('square',m,t,dt*3.2,0.06,this.lead);
+  }
+};
+const OPT={sound:true, vol:2, shake:true, tutorials:true, music:true};
 try{ Object.assign(OPT,JSON.parse(localStorage.getItem('rustrations.opts')||'{}')); }catch(e){}
-function optSave(){ try{ localStorage.setItem('rustrations.opts',JSON.stringify(OPT)); }catch(e){} Snd.on=OPT.sound; Snd.vol=[0,0.5,1,1.6][OPT.vol]; }
+function optSave(){ try{ localStorage.setItem('rustrations.opts',JSON.stringify(OPT)); }catch(e){} Snd.on=OPT.sound; Snd.vol=[0,0.5,1,1.6][OPT.vol]; Music.apply(); }
 Snd.on=OPT.sound; Snd.vol=[0,0.5,1,1.6][OPT.vol];
 
 /* ---------- saves: three slots, written every time you reach the town page ---------- */
@@ -1800,8 +1896,8 @@ function slotPeek(n){ try{ return JSON.parse(localStorage.getItem(slotKey(n))||'
 function slotErase(n){ try{ localStorage.removeItem(slotKey(n)); }catch(e){} }
 function saveGame(){
   if(!S.slot) return;
-  const d={v:1,t:Date.now(),day:S.day,caps:S.caps,up:S.up,hire:S.hire,actOwn:S.actOwn,wb:S.wb,wbDay:S.wbDay,unl:S.unl,mats:S.mats,
-    rig:S.rig,paperFresh:S.paperFresh,paperDay:S.paperDay,history:S.history,cr:S.cr,maxCombo:S.maxCombo,cslots:S.cslots,rows:S.rows,tut:TUT.done,wt:WT.done,
+  const d={v:2,t:Date.now(),day:S.day,ach:{st:AST,got:ACH_GOT},look:{look:S.worn,owned:S.owned},looksFresh:!!S.looksFresh,fixerFresh:!!S.fixerFresh,caps:S.caps,up:S.up,hire:S.hire,actOwn:S.actOwn,wb:S.wb,wbDay:S.wbDay,unl:S.unl,mats:S.mats,
+    rig:S.rig,event:S.event,paperFresh:S.paperFresh,paperDay:S.paperDay,history:S.history,cr:S.cr,maxCombo:S.maxCombo,cslots:S.cslots,rows:S.rows,tut:TUT.done,wt:WT.done,
     tray:S.tray.map(iref), anvil:iref(S.anvil),
     shelves:S.shelves.map(sh=>({cat:sh.cat,slots:sh.slots.map(e=>e?{i:iref(e.item),m:e.misfiled?1:0}:null)})),
     counter:(S.counter||[]).map(e=>e?iref(e.item):null)};
@@ -1810,7 +1906,10 @@ function saveGame(){
 function loadGame(n){
   const d=slotPeek(n); if(!d) return false;
   startRun(); S.slot=n;
-  ['day','caps','hire','actOwn','wb','wbDay','unl','mats','rig','paperFresh','paperDay','history','cr','maxCombo','cslots','rows'].forEach(k=>{ if(d[k]!==undefined) S[k]=d[k]; });
+  ['day','caps','hire','actOwn','wb','wbDay','unl','mats','rig','event','paperFresh','paperDay','history','cr','maxCombo','cslots','rows','looksFresh','fixerFresh'].forEach(k=>{ if(d[k]!==undefined) S[k]=d[k]; });
+  if(!(d.v>=2)&&d.day!==undefined) S.day=d.day+1;         /* build 21 saves stored the finished day; the town page is now the next morning */
+  achReset(); if(d.ach){ Object.assign(AST,d.ach.st||{}); ACH_GOT=d.ach.got||{}; }
+  lookReset(); if(d.look){ Object.assign(S.look,d.look.look||{}); Object.assign(S.owned,d.look.owned||{}); S.worn=Object.assign({},S.look); invalidateLook(); }
   Object.assign(S.up,d.up||{}); while(S.actOwn.length<ACTIVES.length) S.actOwn.push(false);
   TUT.done=d.tut||{}; TUT.active=null; WT.done=!!d.wt; WT.on=false;
   S.tray=(d.tray||[]).map(ideref); while(S.tray.length<17) S.tray.push(null); S.anvil=ideref(d.anvil);
@@ -1819,10 +1918,164 @@ function loadGame(n){
   TRADER_KEY=''; S.fresh=false; S.paused=false; S.esc=false; S.scene='hub'; S.sceneT=0;
   return true;
 }
-function newGame(n){ slotErase(n); S.slotPick=n; S.scene='howto'; S.sceneT=0; }
-function beginRun(){                                   /* OK on the how-to card: straight into day 1 and its lesson */
+function newGame(n){ slotErase(n); S.slotPick=n; achReset(); lookReset(); startIntro(); }   /* fresh progress, then the intro */
+function beginRun(){                                   /* after the intro: straight into day 1 and its lesson */
   startRun(); S.slot=S.slotPick||1; S.fresh=false; S.paused=false; S.esc=false;
   S.scene='play'; S.sceneT=0; say('Another day.');
+}
+/* ---------- the intro: four cards on black, text typed under each, a click turns the page ---------- */
+const INTRO=[
+ {text:'DUSTWELL. THE EDGE OF THE DUST.'},
+ {text:"It's a new dawn..."},
+ {text:'And a new beginning for me...'},
+ {text:'Time to trade goods!'}
+];
+let INTRO_BG=null, INTRO_KEY=null, INTRO_SHOP=null;
+/* a scavenger in silhouette: hood with a goggle bump, pack with a bedroll, a staff in the leading hand, ragged hem, canteen */
+const WALK_TOP=['......kkkk......','.....kkkkkk.....','....kkkkkkkk....','....kkkkkkkkk...','....kkkkkkkk...k','.....kkkkkk....k','......kkk......k',
+                '..kk.kkkkkkk...k','.kkkkkkkkkkkk..k','.kkkkkkkkkkkkkkk','.kkkkkkkkkkkk..k','.kkkkkkkkkk....k','.kkkk.kkkkkk...k','.kkkk.kkkkkk...k',
+                '..kk..kkkkkkk..k','..kk..kkkkkkk..k','.....kkkkkkkkk.k','.....kk.kkkkk..k','.....kkkkk.kk..k'];
+const WALK_PX=[
+ WALK_TOP.concat(['.....kkk.kkk...k','....kkk...kkk..k','....kk.....kk..k','...kkk.....kkk.k','...kk.......kk.k','..kkk.......kkkk','..kk.........kkk']),
+ WALK_TOP.concat(['......kkkkk....k','......kkkkk....k','......kkkk.....k','......kkkk.....k','......kkkk.....k','.....kkkkk.....k','....kkk.kkk....k'])
+].map(r=>spriteFrom(r,{k:'#120c10'}));
+function buildIntroWalk(){                                  /* the road at first light */
+  const Wc=150,Hc=80, c=makeCanvas(Wc,Hc), x=c.getContext('2d');
+  const px=(a,b,w,h,col)=>{ x.fillStyle=col; x.fillRect(Math.round(a),Math.round(b),Math.round(w),Math.round(h)); };
+  ['#1c1a3a','#33284e','#5a3a58','#8a4a52','#c06a48','#e8985a','#f8c878'].forEach((col,i)=>px(0,i*8,Wc,9,col));
+  for(let dy=-14;dy<=0;dy++){ const w=Math.floor(Math.sqrt(196-dy*dy)); px(100-w,56+dy,w*2+1,1,dy<-7?'#fff6d0':'#ffdc8a'); }
+  let sd=5; const rn=()=>{ sd=(sd*1103515245+12345)&0x7fffffff; return sd/0x7fffffff; };
+  let fx=0; while(fx<Wc){ const w=3+rn()*8, h=3+rn()*12; px(fx,56-h,w,h,'#2a1a2c'); fx+=w+2+rn()*6; }
+  px(0,56,Wc,24,'#241a1c'); for(let k=0;k<26;k++) px(rn()*Wc,58+rn()*20,4+rn()*10,1,k%2?'#31242a':'#1a1214');
+  px(0,64,Wc,1,'#3a2a2e');
+  return c;
+}
+function buildIntroKey(){                                   /* a rusty key, close, in an open hand */
+  const Wc=150,Hc=80, c=makeCanvas(Wc,Hc), x=c.getContext('2d');
+  const px=(a,b,w,h,col)=>{ x.fillStyle=col; x.fillRect(Math.round(a),Math.round(b),Math.round(w),Math.round(h)); };
+  ['#100c10','#181018','#241620','#30202a','#3c2a30','#4a3634','#5a4238','#6a4e3c'].forEach((col,i)=>px(0,i*10,Wc,11,col));
+  /* sleeve, wrist, palm */
+  px(96,54,54,26,'#3a2a20'); px(96,54,54,3,'#4e3a2c'); px(100,60,50,2,'#2a1c16');
+  px(84,46,30,24,'#d2a476'); px(84,46,30,3,'#e2b888');                               /* wrist / heel of the hand */
+  px(51,33,46,36,'#6a4a34');                                                           /* outline */
+  px(52,34,44,34,'#d8ac7c'); px(52,34,44,4,'#e8c090'); px(52,64,44,4,'#b08458');      /* palm */
+  px(50,36,3,30,'#c0946a'); px(94,38,3,28,'#c0946a');
+  /* thumb, up the left side */
+  px(39,39,16,12,'#6a4a34'); px(37,41,8,10,'#6a4a34');
+  px(40,40,14,10,'#d8ac7c'); px(38,42,6,8,'#d8ac7c'); px(40,40,14,2,'#e8c090'); px(40,48,14,2,'#b08458'); px(44,44,6,2,'#c8987a');
+  /* the key lies across the palm: bow on the left, teeth to the right */
+  const R='#8a5a2a', R2='#b0783a', R3='#5a3818', R4='#c89058';
+  for(let dy=-9;dy<=9;dy++){ const w=Math.floor(Math.sqrt(81-dy*dy)); px(28-w,42+dy,w*2+1,1,R); }
+  for(let dy=-4;dy<=4;dy++){ const w=Math.floor(Math.sqrt(16-dy*dy)); px(28-w,42+dy,w*2+1,1,'#241a16'); }
+  px(21,34,10,2,R2); px(20,49,12,2,R3); px(24,36,2,2,R4);
+  px(36,40,58,5,R); px(36,40,58,1,R2); px(36,44,58,1,R3);                              /* shaft */
+  px(84,45,4,7,R); px(90,45,4,10,R); px(78,45,3,5,R); px(84,45,4,1,R2); px(90,45,4,1,R2);   /* teeth */
+  [[44,41],[58,42],[66,41],[74,43],[52,43]].forEach(p=>px(p[0],p[1],2,1,R4));           /* worn bright spots */
+  [[48,42],[62,43],[80,41]].forEach(p=>px(p[0],p[1],3,2,'#6a4020'));                     /* rust */
+  /* fingers curl over the shaft */
+  [[54,44],[64,44],[74,44],[84,46]].forEach((f,i)=>{ const fw=9, fh=[22,24,22,18][i];
+    px(f[0]-1,f[1]-1,fw+2,fh+2,'#6a4a34');
+    px(f[0],f[1],fw,fh,'#d8ac7c'); px(f[0],f[1],fw,2,'#e8c090'); px(f[0],f[1]+fh-3,fw,3,'#b08458'); px(f[0]+fw-1,f[1],1,fh,'#b8906a');
+    px(f[0]+2,f[1]+9,fw-4,1,'#c8987a'); });
+  /* a little light on the key from the window */
+  for(let i=0;i<40;i++) px(10+Math.random()*60,6+Math.random()*24,1,1,'rgba(255,230,180,0.25)');
+  return c;
+}
+function buildIntroShop(){                                  /* a shack of tin and planks, shutters open, at first light */
+  const Wc=150,Hc=80, c=makeCanvas(Wc,Hc), x=c.getContext('2d');
+  const px=(a,b,w,h,col)=>{ x.fillStyle=col; x.fillRect(Math.round(a),Math.round(b),Math.round(w),Math.round(h)); };
+  const glyph=(rows,gx,gy,col)=>rows.forEach((r,j)=>{ for(let i=0;i<r.length;i++) if(r[i]==='k') px(gx+i,gy+j,1,1,col); });
+  ['#1c1a3a','#33284e','#5a3a58','#8a4a52','#c06a48','#e8985a','#f8c878'].forEach((col,i)=>px(0,i*8,Wc,9,col));
+  for(let dy=-9;dy<=9;dy++){ const w=Math.floor(Math.sqrt(81-dy*dy)); px(126-w,30+dy,w*2+1,1,dy<-4?'#fff6d0':'#ffdc8a'); }
+  let sd=3; const rn=()=>{ sd=(sd*1103515245+12345)&0x7fffffff; return sd/0x7fffffff; };
+  let fx=0; while(fx<Wc){ const w=3+rn()*8, h=4+rn()*14; px(fx,56-h,w,h,'#2e1e30'); fx+=w+2+rn()*5; }
+  px(0,56,Wc,24,'#3a2c24'); for(let k=0;k<20;k++) px(rn()*Wc,60+rn()*18,6+rn()*12,1,k%2?'#4a3a30':'#2a1e18');
+  /* the shack */
+  px(34,26,84,34,'#3d4246'); for(let k=36;k<116;k+=2) px(k,26,1,34,'#5a6064');                /* corrugated tin */
+  px(34,26,20,34,'#6b4a30'); for(let k=30;k<60;k+=4) px(34,k,20,1,'#4a3220'); px(34,26,1,34,'#3a2718'); px(53,26,1,34,'#3a2718');   /* plank end */
+  [[70,30],[104,44],[90,52]].forEach(p=>{ px(p[0],p[1],5,3,'#8a4a22'); px(p[0]+1,p[1]+1,2,1,'#b06030'); });                        /* rust */
+  px(30,20,92,6,'#3b3025'); px(30,20,92,1,'#5a4a38'); px(28,25,96,2,'#2a2018'); px(60,21,14,2,'#8a4a22');                        /* lean-to roof */
+  px(108,4,1,17,'#2a2422'); px(105,7,7,1,'#2a2422'); px(106,10,5,1,'#2a2422');                                                    /* aerial */
+  px(58,10,32,10,'#3a2718'); px(58,10,32,1,'#5a4030'); px(60,20,1,2,'#2a1e14'); px(87,20,1,2,'#2a1e14');                          /* roof sign */
+  glyph(['kkk','k.k','k.k','k.k','kkk'],62,12,'#f2dfb4'); glyph(['kkk','k.k','kkk','k..','k..'],68,12,'#f2dfb4');
+  glyph(['kkk','k..','kkk','k..','kkk'],74,12,'#f2dfb4'); glyph(['k.k','kkk','kkk','k.k','k.k'],80,12,'#f2dfb4');
+  px(40,34,60,7,'#b8502f'); for(let k=40;k<100;k+=8) px(k,34,4,7,'#d0663c'); px(40,41,60,2,'#2a1a14');                            /* awning */
+  px(72,35,10,5,'#7a4a3a'); for(let k=73;k<82;k+=2) px(k,35,1,1,'#3a2418');                                                       /* patch */
+  px(40,43,1,10,'#2a2018'); px(99,43,1,10,'#2a2018');
+  px(58,40,26,14,'#14100c'); px(60,48,22,1,'#4a3a2a'); [[62,44,'#c8a040'],[67,44,'#a04030'],[72,44,'#7a8a9a'],[77,44,'#c8a040']].forEach(t=>{ px(t[0],t[1],4,4,t[2]); px(t[0],t[1],4,1,'#f0e0b0'); });
+  px(52,38,5,17,'#6b4a30'); px(85,38,5,17,'#6b4a30'); px(53,40,3,1,'#4a3220'); px(53,46,3,1,'#4a3220'); px(86,40,3,1,'#4a3220'); px(86,46,3,1,'#4a3220');   /* shutters */
+  px(103,42,12,18,'#2a1c14'); px(104,43,10,16,'#1a1210'); px(112,51,1,2,'#c8a040');                                               /* door, ajar */
+  px(122,26,1,10,'#2a2422'); px(121,36,3,4,'#f8e0a0'); px(122,35,1,1,'#3a2422');                                                 /* bare bulb */
+  for(let r=8;r>0;r--) px(122-r,38-r*0.6,r*2,r*1.2,'rgba(255,220,140,'+(0.05)+')');
+  px(4,44,10,14,'#4a423a'); px(4,47,10,1,'#6b6258'); px(4,54,10,1,'#6b6258'); px(5,44,1,14,'#5c554a');                           /* barrel */
+  px(16,48,13,10,'#6b4a30'); px(16,48,13,1,'#8a6a45'); px(22,48,1,10,'#4a3220'); px(18,40,10,8,'#5a3f28'); px(18,40,10,1,'#7a5a3a');   /* crates */
+  [[122,54],[131,54],[126,50],[135,50],[130,46]].forEach(b=>{ px(b[0],b[1],10,4,'#8a7a5a'); px(b[0],b[1],10,1,'#a89a7a'); });    /* sandbags */
+  return c;
+}
+function startIntro(){ if(!INTRO_BG) INTRO_BG=buildIntroWalk(); if(!INTRO_KEY) INTRO_KEY=buildIntroKey(); if(!INTRO_SHOP) INTRO_SHOP=buildIntroShop(); if(!CITY_DUSK) CITY_DUSK=buildCity('dusk');
+  S.scene='intro'; S.sceneT=0; S.introN=0; S.introT=0; }
+function introTyped(){ const s=INTRO[S.introN].text; return Math.min(s.length,Math.max(0,Math.floor((S.introT-0.7)*18))); }
+function introClick(){
+  const s=INTRO[S.introN].text;
+  if(introTyped()<s.length){ S.introT=99; return; }          /* first click finishes the line */
+  if(S.introN<INTRO.length-1){ S.introN++; S.introT=0; Snd.ui(); } else toNameScene();
+}
+function drawIntro(){
+  S.introT+=1/60;
+  fillFull('#000');
+  const n=S.introN, iw=600, ih=320, ix=W/2-iw/2, iy=96, fade=clamp(S.introT/0.7,0,1);
+  g.globalAlpha=fade; g.imageSmoothingEnabled=false;
+  if(n===0) g.drawImage(CITY_DUSK,ix,iy,iw,ih);
+  else if(n===1){
+    g.drawImage(INTRO_BG,ix,iy,iw,ih);
+    const wx=14+Math.min(84,S.introT*7), f=Math.floor(S.introT*4)%2, bob=f?0:1;   /* a figure walks toward the light */
+    g.fillStyle='rgba(0,0,0,0.35)'; g.fillRect(ix+wx*4-40,iy+64*4-3,86,4);
+    blit(WALK_PX[f],ix+wx*4,iy+64*4-26*5-bob*5,5);
+  }
+  else if(n===2) g.drawImage(INTRO_KEY,ix,iy,iw,ih);
+  else g.drawImage(INTRO_SHOP,ix,iy,iw,ih);                            /* the shop, open, nobody in yet */
+  g.globalAlpha=1;
+  g.fillStyle='#2a221a'; g.fillRect(ix-4,iy-4,iw+8,4); g.fillRect(ix-4,iy+ih,iw+8,4); g.fillRect(ix-4,iy,4,ih); g.fillRect(ix+iw,iy,4,ih);
+  const s=INTRO[n].text, k=introTyped(), shown=s.slice(0,k), cur=(k<s.length||Math.sin(S.t*8)>0)?'_':' ';
+  txt(shown+cur,W/2,iy+ih+80,22,n===0?C.gold:C.ink,'center');
+  for(let i=0;i<INTRO.length;i++){ g.fillStyle=i===n?C.gold:'#3a3228'; g.fillRect(W/2-30+i*16,iy+ih+130,10,6); }
+  if(k>=s.length) txt('click to go on',W/2,iy+ih+170,11,C.dimmer,'center','normal');
+  button(W-140,20,120,36,'SKIP',()=>toNameScene(),C.dim,12);
+}
+/* ---------- the name screen: after the intro, before the how-to card ---------- */
+const NAME_OK=/[A-Z0-9 '&.\-]/, NAME_ROWS=['1234567890','QWERTYUIOP','ASDFGHJKL','ZXCVBNM-&'];
+function toNameScene(){ S.scene='name'; S.sceneT=0; S.nameBuf=''; S.nameT=0; S.nameHit=null; }
+function nameKey(ch){                                        /* one path for the on-screen keys and the real keyboard */
+  if(ch==='BS') S.nameBuf=S.nameBuf.slice(0,-1);
+  else if(ch==='OK'){ setSign(S.nameBuf.trim()||'TRADER'); invalidateLook(); S.scene='howto'; S.sceneT=0; Snd.good(); return; }
+  else if(S.nameBuf.length<10&&NAME_OK.test(ch)) S.nameBuf+=ch;
+  else { Snd.bad(); return; }
+  S.nameHit={k:ch,t:S.t}; Snd.ui();
+}
+function drawName(){
+  S.nameT+=1/60;
+  fillFull('#000');
+  const line="Let's give my new place a proper name:", k=Math.min(line.length,Math.max(0,Math.floor((S.nameT-0.4)*18)));
+  txt(line.slice(0,k)+(k<line.length?'_':''),W/2,150,22,C.ink,'center');
+  const fx=W/2-220, fy=205;
+  plate(fx,fy,440,56,'#1d1712',C.gold);
+  const cur=Math.sin(S.t*6)>0?'_':'';
+  if(S.nameBuf) txt(S.nameBuf+cur,W/2,fy+28,26,C.gold,'center');
+  else { txt('TRADER',W/2,fy+28,26,C.dimmer,'center'); txt(cur,W/2+txtw('TRADER',26)/2+6,fy+28,26,C.gold,'center'); }
+  txt('up to 10 letters  ·  type, or use the board',W/2,fy+74,10,C.dimmer,'center','normal');
+  const KW=60, KH=48, KP=68, x0=W/2-(9*KP+KW)/2;
+  const hit=(ch)=>S.nameHit&&S.nameHit.k===ch&&S.t-S.nameHit.t<0.12;
+  NAME_ROWS.forEach((row,r)=>{
+    const y=300+r*64, off=[0,0,34,68][r];
+    for(let i=0;i<row.length;i++){ const ch=row[i], x=x0+off+i*KP;
+      keycap(x,y,KW,KH,ch,'#b8622a','rust',hit(ch)); BTNS.push({x:x,y:y,w:KW,h:KH,fn:()=>nameKey(ch)}); }
+  });
+  const y5=556;
+  keycap(x0,y5,120,KH,'DEL','#b8622a','rust',hit('BS'));   BTNS.push({x:x0,y:y5,w:120,h:KH,fn:()=>nameKey('BS')});
+  keycap(x0+128,y5,260,KH,'SPACE','#b8622a','rust',hit(' ')); BTNS.push({x:x0+128,y:y5,w:260,h:KH,fn:()=>nameKey(' ')});
+  const ok=!!S.nameBuf.trim();
+  if(ok) button(x0+396,y5,276,KH,"THAT'S THE NAME",()=>nameKey('OK'),C.gold,14);
+  else { plate(x0+396,y5,276,KH,'#15110d','#33291f'); txt("THAT'S THE NAME",x0+396+138,y5+KH/2,14,C.dimmer,'center'); }
 }
 function toTitle(){ S.paused=false; S.esc=false; S.drag=null; S.traderLineT=0; S.banner=null; S.scene='title'; S.sceneT=0; }
 
@@ -1839,9 +2092,9 @@ function menuList(x,y,w,items){
 }
 function anySave(){ for(let n=1;n<=SLOTS;n++) if(slotPeek(n)) return true; return false; }
 function drawTitle(){
-  g.fillStyle='rgba(8,5,4,0.55)'; g.fillRect(0,0,W,H);
+  fillFull('rgba(8,5,4,0.55)');
   const gr=g.createLinearGradient(0,0,0,H); gr.addColorStop(0,'rgba(8,5,4,0.75)'); gr.addColorStop(0.45,'rgba(8,5,4,0)'); gr.addColorStop(1,'rgba(8,5,4,0.85)');
-  g.fillStyle=gr; g.fillRect(0,0,W,H);
+  fillFull(gr);
   for(let i=0;i<26;i++){ const px2=((i*173+S.t*(18+i%7*6))%(W+80))-40, py2=90+((i*97)%560)+Math.sin(S.t*0.7+i)*10;
     g.globalAlpha=0.10+((i*31)%10)/60; g.fillStyle='#e8c88a'; g.fillRect(Math.round(px2),Math.round(py2),(i%3)+2,2); } g.globalAlpha=1;
   const lx=W/2, ly=150, bob=Math.round(Math.sin(S.t*1.4)*2);
@@ -1855,17 +2108,17 @@ function drawTitle(){
     {n:'SETTINGS', fn:()=>openPage('settings')},
     {n:'EXIT',     fn:()=>{ S.scene='bye'; S.sceneT=0; try{ window.close(); }catch(e){} }}
   ]);
-  txt('build 19',W-20,H-18,10,C.dimmer,'right','normal');
-  txt('achievements '+achCount()+'/'+ACH.length+'  ·  best run: day '+S.best.day,20,H-18,10,C.dimmer,'left','normal');
+  txt('build 25',W-20,H-18,10,C.dimmer,'right','normal');
+  txt('best run: day '+S.best.day,20,H-18,10,C.dimmer,'left','normal');
 }
 function drawBye(){
-  g.fillStyle='rgba(8,5,4,0.88)'; g.fillRect(0,0,W,H);
+  fillFull('rgba(8,5,4,0.88)');
   txt('SHUTTERS DOWN',W/2,H/2-40,40,C.gold,'center');
   txt('Your game is saved. You can close this tab.',W/2,H/2+10,14,C.ink,'center','normal');
   button(W/2-140,H/2+60,280,48,'BACK TO THE MENU',()=>toTitle(),C.dim,14);
 }
 function drawSlots(){
-  g.fillStyle='rgba(8,5,4,0.8)'; g.fillRect(0,0,W,H);
+  fillFull('rgba(8,5,4,0.8)');
   const load=S.slotMode==='load';
   txt(load?'CONTINUE':'NEW GAME',W/2,110,36,C.gold,'center');
   txt(load?'pick a stall to go back to':'pick a slot for the new stall',W/2,150,13,C.dim,'center','normal');
@@ -1879,7 +2132,8 @@ function drawSlots(){
       txt(d.caps+' chits',x+cw/2,y+134,16,C.gold,'center');
       const perks=Object.values(d.up||{}).reduce((a,b)=>a+b,0)+(d.actOwn||[]).filter(Boolean).length;
       txt(perks+' perks'+(d.wb?'  ·  workbench':'')+'  ·  strider '+Object.values(d.rig||{}).filter(Boolean).length+'/4',x+cw/2,y+166,10,C.dim,'center','normal');
-      txt('saved '+new Date(d.t).toLocaleDateString()+'  '+new Date(d.t).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}),x+cw/2,y+188,9,C.dimmer,'center','normal');
+      txt(Object.keys((d.ach&&d.ach.got)||{}).length+'/'+ACH.length+' achievements',x+cw/2,y+184,10,C.dim,'center','normal');
+      txt('saved '+new Date(d.t).toLocaleDateString()+'  '+new Date(d.t).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}),x+cw/2,y+204,9,C.dimmer,'center','normal');
     } else txt('EMPTY',x+cw/2,y+110,22,C.dimmer,'center');
     const arm=S.slotArm===n;
     const label = load ? (d?'CONTINUE':'-') : (d?(arm?'SURE? THIS ERASES IT':'OVERWRITE'):'START HERE');
@@ -1901,7 +2155,7 @@ function toggleRow(x,y,w,label,value,fn,note){
   button(x+w-190,y+9,174,36,value,fn,C.gold,12);
 }
 function pageFrame(title,sub,rows){
-  g.fillStyle='rgba(8,5,4,0.86)'; g.fillRect(0,0,W,H);
+  fillFull('rgba(8,5,4,0.86)');
   const w=720,h=176+rows*60,x=W/2-w/2,y=Math.max(70,(H-h)/2);
   plate(x,y,w,h,'#1a1410','#6b5540','#8a6f50');
   txt(title,W/2,y+42,30,C.gold,'center'); txt(sub,W/2,y+74,12,C.dim,'center','normal');
@@ -1909,20 +2163,21 @@ function pageFrame(title,sub,rows){
   return {x:x+40,y:y+100,w:w-80};
 }
 function drawSettings(){
-  const p=pageFrame('SETTINGS','sound, screen and game',7), r=i=>p.y+i*60;
+  const p=pageFrame('SETTINGS','sound, screen and game',8), r=i=>p.y+i*60;
   toggleRow(p.x,r(0),p.w,'SOUND',OPT.sound?'ON':'OFF',()=>{ OPT.sound=!OPT.sound; optSave(); },'M also mutes');
-  toggleRow(p.x,r(1),p.w,'VOLUME',['MUTE','QUIET','NORMAL','LOUD'][OPT.vol],()=>{ OPT.vol=(OPT.vol%3)+1; optSave(); Snd.ui(); });
-  toggleRow(p.x,r(2),p.w,'FULL SCREEN',document.fullscreenElement?'ON':'OFF',()=>{ try{ if(document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen(); }catch(e){} },'the browser may ask first');
-  toggleRow(p.x,r(3),p.w,'SCREEN SHAKE',OPT.shake?'ON':'OFF',()=>{ OPT.shake=!OPT.shake; optSave(); });
-  toggleRow(p.x,r(4),p.w,'TUTORIALS',OPT.tutorials?'ON':'OFF',()=>{ OPT.tutorials=!OPT.tutorials; optSave(); },'day 1, bulk orders and the workbench walkthrough');
-  toggleRow(p.x,r(5),p.w,'ERASE ALL SAVED GAMES',S.eraseArm?'SURE?':'ERASE',()=>{ if(!S.eraseArm){ S.eraseArm=true; return; } for(let n=1;n<=SLOTS;n++) slotErase(n); S.eraseArm=false; Snd.bad(); },'three slots, gone for good');
-  toggleRow(p.x,r(6),p.w,'RESET ACHIEVEMENTS',S.achArm?'SURE?':'RESET',()=>{ if(!S.achArm){ S.achArm=true; return; } for(const k in AST) delete AST[k]; ACH_GOT={}; achSave(); S.achArm=false; Snd.bad(); },achCount()+' of '+ACH.length+' earned');
+  toggleRow(p.x,r(1),p.w,'MUSIC',OPT.music?'ON':'OFF',()=>{ OPT.music=!OPT.music; optSave(); },'a slow loop under the day');
+  toggleRow(p.x,r(2),p.w,'VOLUME',['MUTE','QUIET','NORMAL','LOUD'][OPT.vol],()=>{ OPT.vol=(OPT.vol%3)+1; optSave(); Snd.ui(); });
+  toggleRow(p.x,r(3),p.w,'FULL SCREEN',document.fullscreenElement?'ON':'OFF',()=>{ try{ if(document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen(); }catch(e){} },'the browser may ask first');
+  toggleRow(p.x,r(4),p.w,'SCREEN SHAKE',OPT.shake?'ON':'OFF',()=>{ OPT.shake=!OPT.shake; optSave(); });
+  toggleRow(p.x,r(5),p.w,'TUTORIALS',OPT.tutorials?'ON':'OFF',()=>{ OPT.tutorials=!OPT.tutorials; optSave(); },'day 1, bulk orders and the workbench walkthrough');
+  toggleRow(p.x,r(6),p.w,'ERASE ALL SAVED GAMES',S.eraseArm?'SURE?':'ERASE',()=>{ if(!S.eraseArm){ S.eraseArm=true; return; } for(let n=1;n<=SLOTS;n++) slotErase(n); S.eraseArm=false; Snd.bad(); },'three slots, gone for good');
+  toggleRow(p.x,r(7),p.w,'RESET ACHIEVEMENTS',S.achArm?'SURE?':'RESET',()=>{ if(!S.achArm){ S.achArm=true; return; } for(const k in AST) delete AST[k]; ACH_GOT={}; achSave(); S.achArm=false; Snd.bad(); },achCount()+' of '+ACH.length+' earned');
 }
 /* ---------- ESC menu: during the day (pauses it) and on the town page ---------- */
 function escOpen(){ return (S.scene==='play'&&S.paused)||(S.scene==='hub'&&S.esc); }
 function drawEscMenu(){
   BTNS=[];                                             /* nothing underneath is clickable */
-  g.fillStyle='rgba(6,4,3,0.72)'; g.fillRect(0,0,W,H);
+  fillFull('rgba(6,4,3,0.72)');
   const w=420,h=440,x=W/2-w/2,y=H/2-h/2;
   plate(x,y,w,h,'#1a1410','#6b5540','#8a6f50');
   txt(S.scene==='play'?'PAUSED':'MENU',W/2,y+40,28,C.gold,'center');
@@ -1935,6 +2190,53 @@ function drawEscMenu(){
     {n:'EXIT',        sub:midDay?'today is not saved - the game saves on the town page':'saved', fn:()=>{ if(!midDay) saveGame(); toTitle(); }}
   ]);
   txt('esc or space resumes',W/2,y+h-16,9,C.dimmer,'center','normal');
+}
+
+/* ================================================================
+   EVENTS  -  every issue of the Herald (read on day 5, 9, 13 ...) prints one event; it moves
+   the price of ONE kind of goods for ONE day: the very next trading day.
+   ================================================================ */
+const EVENTS=[
+ /* weather */
+ {id:'dust',   pic:'The east road, before the grit came.', type:'weather', cat:'meds', m:1.40, h:['DUST STORM','ROLLS IN'],      b:'A wall of grit is due off the flats by dawn. Lungs will rattle for days and the clinic has already hung out its lamp.', q:'"Wet rag over the mouth and pray," the ferryman advises.'},
+ {id:'heat',   pic:'Tins going fast at the strip.', type:'weather', cat:'food', m:1.50, h:['HEAT WAVE','BAKES TOWN'],     b:'The well rope came up dry twice yesterday. Anything that can be drunk or eaten cold will be fought over tomorrow.',          q:'"I would trade my boots for a clean bottle," said a drover.'},
+ {id:'cold',   pic:'Beans for the shiverers.', type:'weather', cat:'food', m:1.35, h:['COLD SNAP','TONIGHT'],        b:'Frost on the pump handle for the first time this year. Folk eat more when they shiver, and they pay for it.',                q:'"Beans. Hot. Now." - overheard at the gate.'},
+ {id:'acid',   pic:'Boards under tarps, west end.', type:'weather', cat:'tech', m:1.40, h:['ACID RAIN','FORECAST'],       b:'Yellow cloud to the west. Every exposed wire and board in Dustwell will be pitted by noon; spares will be dear.',              q:'"Cover your terminals," warns the council engineer.'},
+ {id:'fair',   pic:'Produce, knee-deep.', type:'weather', cat:'food', m:0.75, h:['FAIR SKIES','ALL WEEK'],      b:'Growers are bringing everything in at once while the weather holds. The strip will be knee-deep in produce.',                 q:'"You cannot give plums away," one grower complained.'},
+ /* military */
+ {id:'gangs',  pic:'The ridge road at dusk.', type:'military',cat:'meds', m:1.50, h:['GANGS CLASH','AT THE RIDGE'], b:'Two bands met over the ridge road last night and neither backed down. The wounded are being carted toward town.',            q:'"Bring bandages, not questions," said a gate guard.'},
+ {id:'raiders',pic:'Fires past the north wash.', type:'military',cat:'guns', m:1.60, h:['RAIDERS MASS','UP NORTH'],    b:'Scouts count forty fires past the north wash. Every household is arming whoever can hold a gun the right way round.',          q:'"I will take anything that goes bang," said a farmer.'},
+ {id:'militia',pic:'Wall duty: bring your own iron.', type:'military',cat:'guns', m:1.40, h:['THE MILITIA','IS HIRING'],    b:'The council is paying a day-rate for wall duty, and recruits are told to bring their own iron.',                              q:'"No gun, no pay," the sergeant confirmed.'},
+ {id:'truce',  pic:'Quiet on the ridge.', type:'military',cat:'guns', m:0.70, h:['CEASEFIRE','IS SIGNED'],      b:'The ridge bands shook on it at noon. Nobody expects it to last, but nobody is buying rifles while it does.',                  q:'"First quiet night in a month," said the gate guard.'},
+ {id:'convoy', pic:'Where the convoy should have been.', type:'military',cat:'tech', m:1.35, h:['TECH CONVOY','AMBUSHED'],     b:'The monthly haul from the east never arrived. What is already on the shelves in town is all there is.',                  q:'"They took the lot, even the cables," a survivor said.'},
+ /* the town */
+ {id:'fever',  pic:'The clinic lamp, lit again.', type:'town',    cat:'meds', m:1.60, h:['FEVER IN THE','SOUTH QUARTER'],b:'Eleven down in two days. The clinic is out of nearly everything and is sending runners to every stall on the strip.',       q:'"Pay what they ask," the doctor told her runners.'},
+ {id:'harvest',pic:'Carts queued at the gate.', type:'town',    cat:'food', m:0.70, h:['THE HARVEST','COMES IN'],     b:'Carts are queued past the gate. Good news for bellies and bad news for anyone sitting on a shelf of tins.',                   q:'"Cheapest week of the year," said a cook.'},
+ {id:'tower',  pic:'Half the tank, in the street.', type:'town',    cat:'food', m:1.45, h:['WATER TOWER','CRACKS'],       b:'A seam opened overnight and half the tank is in the street. Clean water is suddenly worth queueing for.',                     q:'"Patch it again," voted the council, again.'},
+ {id:'bunker', pic:'Crates out of the rail-yard store.', type:'town',    cat:'tech', m:0.70, h:['OLD BUNKER','CRACKED OPEN'],  b:'Scavengers broke into a sealed store under the rail yard. Crates of old machines are flooding the strip.',                    q:'"More boards than buyers," a scavenger shrugged.'},
+ {id:'power',  pic:'The works, dark.', type:'town',    cat:'tech', m:1.50, h:['POWER OUT','AT THE WORKS'],   b:'The generator hall went dark at dusk. The foreman wants cells and boards by morning and is not counting chits.',               q:'"Whatever it costs," the foreman said.'},
+ {id:'quack',  pic:'Free at the gate. Mostly sugar.', type:'town',    cat:'meds', m:0.75, h:['QUACK DOCTOR','RUN OUT'],     b:'His whole stock was seized and is being handed out free at the gate. Honest medicine will be a hard sell for a day.',          q:'"Most of it is sugar," admitted a guard.'}
+];
+const EV_FILL=[['WELL ROPE REPLACED','Third one this season.'],['STRAY MULE FOUND','Answers to nothing.'],['COUNCIL MEETS AGAIN','No decision reached.'],
+ ['WALL PATROL DOUBLED','Volunteers wanted.'],['FERRY FARE GOES UP','Ferryman blames the mud.'],['LOST: ONE LEFT BOOT','Reward: the right one.'],
+ ['RAT KING SIGHTED','East drain, after dark.'],['NEW LAMP AT THE GATE','Burns till midnight.'],['STRIDER SEEN WALKING','Children delighted.']];
+const EV_ICON={
+ weather: ['..kkk...','.kkkkk..','kkkkkkk.','kkkkkkkk','.kkkkkk.','...kk...','..kk....','.kk.....'],
+ military:['k......k','.k....k.','..k..k..','...kk...','...kk...','..k..k..','.kk..kk.','kk....kk'],
+ town:    ['...kk...','..kkkk..','.kkkkkk.','.kkkkkk.','.kkkkkk.','kkkkkkkk','...kk...','...kk...']
+};
+const EV_SPR={}; Object.keys(EV_ICON).forEach(k=>EV_SPR[k]=spriteFrom(EV_ICON[k],{k:'#2a241c'}));
+function evPct(e){ const p=Math.round((e.m-1)*100); return (p>0?'+':'')+p+'%'; }
+function evToday(){ return (S.event&&S.event.day===S.day)?S.event:null; }
+function evTomorrow(){ return (S.event&&S.event.day===S.day+1)?S.event:null; }
+function evMult(cat){ const e=evToday(); return (e&&e.cat===cat)?e.m:1; }
+/* called when the Herald is about to be shown: tomorrow's event is fixed then, never rerolled */
+function rollEvent(){
+  const last=S.event, pool=EVENTS.filter(e=>!last||(e.id!==last.id&&e.cat!==last.cat));
+  const e=pick(pool);
+  const fill=EV_FILL.slice().sort(()=>Math.random()-0.5).slice(0,3);
+  S.event=Object.assign({},e,{day:S.day+1,fill:fill});
+  S.evLog=S.evLog||[];
 }
 
 /* ================================================================
@@ -1964,11 +2266,10 @@ function startLesson(id){
     S.shelves[row].slots[0]={item:p0,misfiled:false,arriving:0,anim:0};
     TUT.gave.push({i:row,j:0,item:p0});
   } else {
-    S.shelves[row].slots=[0,1,2,3].map((z,j)=>{
-      const it=pick(BYCAT[cat]);
-      TUT.gave.push({i:row,j:j,item:it});
-      return {item:it,misfiled:false,arriving:0,anim:0};
-    });
+    /* three meds on the shelf, counting any the player already has: the order is for three, so nothing is left over */
+    const sl=S.shelves[row].slots; let have=sl.filter(e=>e&&e.item.cat===cat).length;
+    for(let j=0;j<4&&have<3;j++){ if(sl[j]&&sl[j].item.cat===cat) continue;
+      const it=pick(BYCAT[cat]); sl[j]={item:it,misfiled:false,arriving:0,anim:0}; TUT.gave.push({i:row,j:j,item:it}); have++; }
     TUT.cust=lessonCust({kind:'bundle',cat:cat,item:null,n:3},'medic','I need three. For the clinic.');
   }
 }
@@ -1998,8 +2299,8 @@ function lessonEnsure(want,typeId,line,stock){
 function lessonFinish(){
   const id=TUT.active;
   if(id) TUT.done[id]=true;
-  /* take back whatever the lesson put out and the player did not use */
-  TUT.gave.forEach(g=>{
+  /* the day-1 props (worthless cans, a sample) are cleared away; the day-3 meds are real stock and stay */
+  if(id==='basics') TUT.gave.forEach(g=>{
     const sh=S.shelves[g.i], sl=sh&&sh.slots[g.j];
     if(sl&&sl.item===g.item){
       const r=shelfSlotRect(g.i,g.j);
@@ -2066,7 +2367,7 @@ function lessonStep(){
   if(TUT.step<3) lessonEnsure({kind:'bundle',cat:'meds',item:null,n:3},'medic','I need three. For the clinic.',3);
   const c=TUT.cust; if(!c) return;
   if(TUT.step===0) return;                       /* waits for a click */
-  if(TUT.step===1){ if(bundleProgress(c)>=c.want.n){ TUT.step=2; TUT.t=0; } return; }
+  if(TUT.step===1){ if(bundleProgress(c)===c.want.n){ TUT.step=2; TUT.t=0; } return; }
   if(TUT.step===2){ if(S.bulkSold>0){ TUT.step=3; TUT.t=0; } return; }
   /* step 3 waits for a click */
 }
@@ -2152,7 +2453,7 @@ function startRun(){
   TUT.done={};
   craftReset();
   UPGRADES.forEach(u=>S.up[u.id]=0);
-  S.paperFresh=false; S.paperDay=0;
+  S.paperFresh=false; S.paperDay=0; S.event=null; S.evGain=0; S.looksFresh=false; S.fixerFresh=false;
   S.shelves=[]; makeShelves(); startDay();
   S.fresh=false; S.esc=false; S.paused=false;       /* a new run goes straight into day 1 (see beginRun) */
 }
@@ -2162,12 +2463,12 @@ function startDay(){
   S.shelves.forEach(sh=>sh.slots.forEach(e=>{ if(e){ e.arriving=0; e.anim=0; } }));
   S.custs=[]; S.flyers=[]; S.crates=[]; S.drag=null;
   makeShelves();
-  S.dayMis=0; S.dayFiled=0;
+  S.dayMis=0; S.dayFiled=0; S.evGain=0;
   S.dayTime=0; S.dayLen=dayLenFor(S.day); S.earned=0; S.sold=0; S.angry=0; S.spilled=0;
-  S.combo=0; S.closing=false; S.overtime=0;
+  S.combo=0; S.closing=false; S.overtime=0; S.shut=false;
   S.catEarn={}; S.dayCombo=0; S.bulkSold=0; selClear();
   S.actCd=[0,0,0,0,0,0]; S.steadyT=0; S.patterT=0; S.handT=0; S.signalT=0;
-  S.crateDue=0; S.bigDue=false; S.keyFx=[];
+  S.crateDue=0; S.bigDue=false; S.crateRest=0; S.keyFx=[];
   S.nextCrate=1.4; S.nextCust=S.day===1?5.0:2.6; S.droneT=9;
   S.rushDone=false; S.rushQueue=0; S.rushT=0; S.banner=null;
   botReset();
@@ -2196,9 +2497,16 @@ function endDay(){
   S.scene='report'; S.sceneT=0;
   S.deadReason = S.caps<0 ? 'You could not make rent. The council took the stall.' : null;
 }
-function nextDay(){ S.day++; startDay(); }
+function nextDay(){ startDay(); }                        /* the day number already moved on when dusk closed */
+/* the END DAY button only shows once the day's last buyer has actually walked in: nobody else can spawn
+   (the next timed arrival would land after closing, the rush is spent) and nobody is still on the road */
+function lastCall(){
+  if(S.scene!=='play'||S.shut||tutFrozen()) return false;
+  const noMore = S.closing || (S.rushQueue===0 && S.dayTime+S.nextCust>=S.dayLen);
+  return noMore && !S.custs.some(c=>c.state==='walk');
+}
 function shutUpShop(){
-  S.closing=true;
+  S.closing=true; S.shut=true;
   S.custs.forEach(c=>{ if(c.state==='wait'||c.state==='walk'){ c.state='leave'; c.mood=0; c.line='Closing? Fine.'; c.lineT=1.2; } });
   S.crates.length=0;
 }
@@ -2251,7 +2559,7 @@ function tick(dt){
 
   if(!S.closing&&!tutFrozen()){
     S.nextCrate-=dt*(S.signalT>0?1+SIGNAL_BOOST:1);
-    if(S.nextCrate<=0){ S.nextCrate=crateEvery(S.day); S.crateDue=(S.crateDue||0)+1; }     /* due - but it waits its turn */
+    if(S.nextCrate<=0){ S.nextCrate=crateEvery(S.day); S.crateDue=1; }                    /* due - but it waits its turn, and never queues up */
     S.nextCust-=dt;
     if(S.nextCust<=0){ S.nextCust=custEvery(S.day)*rnd(0.8,1.2); spawnCustomer(); }
   } else if(S.closing) S.overtime+=dt;   /* a frozen lesson is not overtime */
@@ -2265,7 +2573,7 @@ function tick(dt){
   if(S.rushQueue>0){ S.rushT-=dt; if(S.rushT<=0){ S.rushT=1.1; S.rushQueue--; spawnCustomer(); } }
   if(S.banner){ S.banner.t+=dt; if(S.banner.t>S.banner.dur) S.banner=null; }
 
-  if(!S.crates.length&&!S.closing&&!tutFrozen()){
+  if(!S.crates.length&&!S.closing&&!tutFrozen()&&!crateResting()){                 /* nothing lands while the road rests */
     if(S.bigDue){ S.bigDue=false; spawnCrate(true); }
     else if(S.crateDue>0){ S.crateDue--; spawnCrate(false); }
   }
@@ -2278,7 +2586,7 @@ function tick(dt){
       if(cr.t>0.1){
         cr.t=0; const it=cr.items.shift();
         if(it){ deliverItem(it,cr.x+26,cr.y+10); dust(cr.x+26,cr.y+30,3); }
-        else cr.state='out';
+        else { cr.state='out'; S.crateRest=S.dayTime+crateRestFor(cr.n); }   /* unloaded: the rest starts now */
       }
     } else { cr.x-=260*dt; if(cr.x<-220) S.crates.splice(i,1); }
   }
@@ -2376,6 +2684,7 @@ function sellTo(c,drag){
   S.caps+=price; S.earned+=price; S.sold++;
   S.catEarn[drag.item.cat]=(S.catEarn[drag.item.cat]||0)+price;
   addCombo(); TUT.hag=drag.haggle||0;
+  { const em=evMult(drag.item.cat); if(em!==1) S.evGain=(S.evGain||0)+(price-Math.round(price/em)); }
   S.cr.soldR[drag.item.r||0]++;
   AST.sold=n0('sold')+1; AST.earned=n0('earned')+price; AST.maxSale=Math.max(n0('maxSale'),price);
   if(drag.src==='counter') AST.counterSales=n0('counterSales')+1;
@@ -2403,6 +2712,7 @@ function sellBundle(c,d){
   S.caps+=price; S.earned+=price; S.sold+=list.length; S.bulkSold++;       /* a bulk order counts every piece as sold */
   AST.sold=n0('sold')+list.length; AST.earned=n0('earned')+price; AST.maxSale=Math.max(n0('maxSale'),price);
   AST.bulk=n0('bulk')+1; if(list.length>=4) AST.bulk4=1; (AST.types=AST.types||{})[c.type.id]=1; achCheck();
+  { const em=evMult(list[0].item.cat); if(em!==1) S.evGain=(S.evGain||0)+(price-Math.round(price/em)); }
   const share=Math.round(price/list.length);
   list.forEach(b=>{ S.catEarn[b.item.cat]=(S.catEarn[b.item.cat]||0)+share; addCombo(); });
   c.mood=1; c.state='served'; c.st=0; c.line=null;
@@ -2551,7 +2861,7 @@ function resolveBundleDrop(x,y,d){
     if(bundleFits(c,d.bundle)){ sellBundle(c,d); return; }
     if(!tutFrozen()) c.pat=Math.max(1.2,c.pat-c.patMax*0.08);
     c.shakeT=0.4;
-    if(c.want.kind==='bundle'){ c.line='I said '+c.want.n+' of them.';
+    if(c.want.kind==='bundle'){ c.line=d.bundle.length>c.want.n?('I said '+c.want.n+', not '+d.bundle.length+'.'):('I said '+c.want.n+' of them.');
       float(c.x+170,c.y+34,'ORDER NOT FILLED',C.red,16); }
     else { c.line='One at a time.'; float(c.x+170,c.y+34,'NOT A BULK BUYER',C.red,16); }
     c.lineT=1.5; Snd.bad(); shake(4); returnBundle(d); return;
@@ -2613,6 +2923,7 @@ cv.addEventListener('pointerdown',ev=>{
   ev.preventDefault(); Snd.init();
   const p=toDesign(ev); MX=p.x; MY=p.y;
   for(let i=BTNS.length-1;i>=0;i--){ const b=BTNS[i]; if(inRect(p.x,p.y,b)){ Snd.ui(); b.fn(); return; } }
+  if(S.scene==='intro'){ introClick(); return; }
   if(S.scene==='play'&&!S.paused){
     if(lessonClick()) return;
     if(ev.ctrlKey||ev.button===2){ scrapAt(p.x,p.y); return; }
@@ -2635,16 +2946,18 @@ window.addEventListener('pointerup',ev=>{ const p=toDesign(ev);
   if(S.pend){ const e=S.pend.e; S.pend=null; selToggle(e.src,e.si,e.sj,e.item,e.misfiled); }
   if(S.wd) wsDrop(p.x,p.y); if(S.drag) resolveDrop(p.x,p.y); });
 window.addEventListener('keydown',ev=>{
+  if(S.scene==='intro'){ if(ev.key==='Escape') toNameScene(); else if(ev.key==='Enter'||ev.key===' ') introClick(); ev.preventDefault(); return; }
+  if(S.scene==='name'){ if(ev.key==='Enter'){ if(S.nameBuf.trim()) nameKey('OK'); } else if(ev.key==='Backspace') nameKey('BS'); else if(ev.key.length===1) nameKey(ev.key.toUpperCase()); ev.preventDefault(); return; }
   if(S.scene==='play'&&!S.paused&&ev.key>='1'&&ev.key<='6'){ fireActive(+ev.key-1); ev.preventDefault(); return; }
   if(ev.key==='Escape'&&(S.scene==='map'||S.scene==='ach')){ closePage(); ev.preventDefault(); return; }
   if(ev.key==='Escape'&&(S.scene==='transport'||S.scene==='shop'||S.scene==='ledger'||S.scene==='paper')){ toHub(); ev.preventDefault(); return; }
   if(ev.key==='Escape'&&S.sel.length){ selClear(); Snd.ui(); ev.preventDefault(); return; }
   if(S.scene==='looks'&&S.editName){
-    if(ev.key==='Backspace'){ S.look.sign=(S.look.sign||'').slice(0,-1); saveLook(); ev.preventDefault(); }
+    if(ev.key==='Backspace'){ setSign((S.look.sign||'').slice(0,-1)); saveLook(); ev.preventDefault(); }
     else if(ev.key==='Enter'||ev.key==='Escape'){ S.editName=false; }
     else if(ev.key.length===1&&(S.look.sign||'').length<10){
       const ch=ev.key.toUpperCase();
-      if(/[A-Z0-9 '&.\-]/.test(ch)){ S.look.sign=(S.look.sign||'')+ch; saveLook(); }
+      if(/[A-Z0-9 '&.\-]/.test(ch)){ setSign((S.look.sign||'')+ch); saveLook(); }
       ev.preventDefault();
     }
     return;
@@ -2688,9 +3001,15 @@ function button(x,y,w,h,label,fn,col,size){
   txt(label,x+w/2,y+h/2,size||16,hov?C.ink:col,'center');
   BTNS.push({x:x,y:y,w:w,h:h,fn:fn});
 }
+function drawSceneEdges(){                 /* sky and ground carry on past the 1280 frame; the car and the pole do not repeat */
+  if(!SCENE_EDGE) return;
+  g.imageSmoothingEnabled=false;
+  if(EXX>0){ g.drawImage(SCENE_EDGE,0,0,1,190,-EXX-16,0,EXX+24,H); g.drawImage(SCENE_EDGE,0,0,1,190,W-8,0,EXX+24,H); }   /* tucked 8px under the scene: no seam */
+  if(EXY>0){ g.fillStyle='#241f3a'; g.fillRect(-EXX-16,-EXY-16,W+2*EXX+32,EXY+16); g.fillStyle='#3d2a1c'; g.fillRect(-EXX-16,H,W+2*EXX+32,EXY+16); }
+}
 function drawScene(){
   if(!SCENE) SCENE=buildScene();
-  blit(SCENE,0,0,4);
+  drawSceneEdges(); blit(SCENE,0,0,4);
   drawSceneAnim(S.t);
   const sg=S.look.sign||'TRADER';
   let ss=28; while(ss>10 && txtw(sg,ss)>176) ss--;
@@ -2716,8 +3035,7 @@ function drawScene(){
   }
 }
 function drawHUD(){
-  g.fillStyle='rgba(12,9,7,0.9)'; g.fillRect(0,0,W,LO.hudH);
-  g.fillStyle='#5c4a37'; g.fillRect(0,LO.hudH-2,W,2);
+  { const r=fullRect(); g.fillStyle='rgba(12,9,7,0.9)'; g.fillRect(r.x,r.y,r.w,LO.hudH-r.y); g.fillStyle='#5c4a37'; g.fillRect(r.x,LO.hudH-2,r.w,2); }
   plate(6,4,126,50,'#241c16','#6b5540');
   txt('DAY '+S.day,69,30,22,C.ink,'center');
   plate(138,12,254,34,'#1d1712','#5c4a37');
@@ -2742,9 +3060,8 @@ function drawHUD(){
     txt(hh.who+' '+BOT.earned+'c',1018,22,12,hh.col);
     txt('lvl '+hh.lvl,1018,40,10,C.dim,'left','normal');
   }
-  if(S.scene==='play'){
-    button(1100,8,76,42,S.paused?'RESUME':'PAUSE',()=>{S.paused=!S.paused;},C.dim,S.paused?10:13);
-    button(1182,8,90,42,'END DAY',()=>{ if(S.scene==='play') shutUpShop(); },C.red,12);
+  if(S.scene==='play'){                                   /* no pause button: esc opens the menu */
+    keycap(1186,13,50,32,'ESC',C.dim,'rest',false); txt('MENU',1258,29,10,C.dimmer,'center');
   } else {
     plate(1100,8,172,42,'#1d1712','#4a3b2c');
     txt(S.scene==='hub'?'DUSTWELL':S.scene==='shop'?'THE FIXER':S.scene==='looks'?'THE LOOK':S.scene==='ledger'?'THE LEDGER':
@@ -2762,6 +3079,8 @@ function drawShelves(){
     g.fillRect(r.x,r.y,r.w,SHELF_HEAD);
     blit(catBadge(sh.cat),r.x+4,r.y+7,1.5);
     txt(cat.name,r.x+22,r.y+SHELF_HEAD/2,16,cat.col);
+    { const e=evToday(); if(e&&e.cat===sh.cat){ const up=e.m>1, tx3=r.x+30+txtw(cat.name,16), tw3=txtw(evPct(e),11)+12;
+        g.fillStyle=up?C.green:C.red; g.fillRect(tx3,r.y+4,tw3,15); txt(evPct(e),tx3+tw3/2,r.y+12,11,'#14100c','center'); } }
     let filled=0; sh.slots.forEach(s=>{ if(s) filled++; });
     txt(filled+'/4',r.x+r.w-6,r.y+SHELF_HEAD/2,14,filled===4?C.gold:C.dimmer,'right');
     if(filled===0&&freeLabel(i)) txt('click to relabel',r.x+r.w-44,r.y+SHELF_HEAD/2,12,C.dimmer,'right','normal');
@@ -2847,7 +3166,7 @@ function drawCustomers(){
     const sub = (c.line&&c.lineT>0) ? {s:c.line,col:c.mood<0?C.red:'#c9a978'} : null;
     const t1=big?14:12, t2=big?11:9, ry1=big?19:14, ry2=big?37:28;
     if(isBulk){
-      const prog=bundleProgress(c), done=prog>=c.want.n;
+      const prog=bundleProgress(c), done=prog===c.want.n, over=prog>c.want.n;
       if(c.want.item) drawItem(c.want.item,wb.x+26,wb.y+wb.h/2,2);
       else blit(catBadge(c.want.cat),wb.x+14,wb.y+wb.h/2-10,2.5);
       txt(c.want.n+' x '+(c.want.item?fitText(c.want.item.n.toUpperCase(),wb.w-96,t1):CATS[c.want.cat].name),
@@ -2856,8 +3175,8 @@ function drawCustomers(){
       else txt('shift-pick '+c.want.n+', drag them over',wb.x+50,wb.y+ry2,t2,'#e8b13c','left','normal');
       if(S.sel.length){
         const pw=54;
-        plate(wb.x+wb.w-pw-4,wb.y+4,pw,wb.h-8,done?'#2e3a1e':'#2a2012',done?C.green:'#c08a2a');
-        txt(prog+'/'+c.want.n,wb.x+wb.w-pw/2-4,wb.y+wb.h/2,big?16:13,done?C.green:C.gold,'center');
+        plate(wb.x+wb.w-pw-4,wb.y+4,pw,wb.h-8,done?'#2e3a1e':(over?'#3a1e1a':'#2a2012'),done?C.green:(over?C.red:'#c08a2a'));
+        txt(prog+'/'+c.want.n,wb.x+wb.w-pw/2-4,wb.y+wb.h/2,big?16:13,done?C.green:(over?C.red:C.gold),'center');
       }
     } else if(c.want.kind==='item'){
       drawItem(c.want.item,wb.x+26,wb.y+wb.h/2,2);
@@ -2912,10 +3231,17 @@ function drawSidePanels(){
              hr.x+12,hr.y+52,hr.w-24,16,11,C.ink);
     return;
   }
-  const ce=crateEvery(S.day), tleft=Math.max(0,S.nextCrate);
+  if(lastCall()){                                          /* the day's last buyers: the END DAY button sits right under the queue */
+    const on=Math.sin(S.t*5)>0;
+    txt(S.closing?'CLOSING TIME':'LAST CALL',hr.x+12,hr.y+15,11,C.red);
+    txt(S.closing?'nobody else is coming':'that was the last buyer today',hr.x+hr.w-12,hr.y+15,10,C.dim,'right','normal');
+    button(hr.x+12,hr.y+30,hr.w-24,54,'END DAY',()=>shutUpShop(),on?'#ff7a5c':C.red,20);
+    return;
+  }
+  const ce=crateEvery(S.day), rest=Math.max(0,(S.crateRest||0)-S.dayTime), due=S.crateDue>0||S.bigDue, tleft=due?rest:Math.max(0,S.nextCrate,rest);
   txt('NEXT CARAVAN',hr.x+12,hr.y+15,11,C.dim);
-  txt(S.closing?'closed':(S.crates.length?'unloading...':((S.crateDue>0||S.bigDue)?'at the gate':'in '+Math.ceil(tleft)+'s')),hr.x+hr.w-12,hr.y+15,11,S.crates.length?C.gold:C.dimmer,'right','normal');
-  bar(hr.x+12,hr.y+25,hr.w-24,11,S.closing?0:1-tleft/ce,C.gold);
+  txt(S.closing?'closed':(S.crates.length?'unloading...':(due?(rest>0?'on the road · '+Math.ceil(rest)+'s':'at the gate'):'in '+Math.ceil(tleft)+'s')),hr.x+hr.w-12,hr.y+15,11,S.crates.length?C.gold:C.dimmer,'right','normal');
+  bar(hr.x+12,hr.y+25,hr.w-24,11,S.closing?0:1-Math.min(1,tleft/ce),C.gold);
   const hint = S.tut===1 ? 'Drag loot off THE COUNTER onto the shelf with the matching sign.'
              : S.tut===2 ? 'Now drag stock from a shelf onto a customer who wants it.'
              : S.tut===3 ? 'Hold an item over a customer to HAGGLE: the price climbs, their patience burns.'
@@ -2939,9 +3265,9 @@ function markSelected(q,n){
   plate(q.x+q.w-22,q.y+4,18,18,'#2a2012',C.gold);
   txt(''+(n+1),q.x+q.w-13,q.y+13,11,C.gold,'center');
 }
-const RAIL={x:8,w:118,py:108};
+const RAIL={x:10,w:150};
 let TIP=null, RAILPOS=[null,null,null,null,null,null], RAILAY=252;
-function perkRailRect(i){ return RAILPOS[i]||{x:RAIL.x+6,y:RAILAY,w:RAIL.w-12,h:44}; }
+function perkRailRect(i){ return RAILPOS[i]||{x:RAIL.x+6,y:RAILAY,w:RAIL.w-12,h:54}; }
 function wrapLines(str,maxw,size){
   g.font='normal '+size+'px '+FONT;
   const words=str.split(' '); let line='', n=1;
@@ -2949,34 +3275,45 @@ function wrapLines(str,maxw,size){
     if(g.measureText(t).width>maxw){ n++; line=w; } else line=t; }
   return n;
 }
-/* only what you actually own shows on the rail */
+/* only what you actually own shows on the rail. The rail hangs from the bottom: its last card
+   sits level with the bottom of THE COUNTER, whatever you own. */
 function drawPerkRail(){
   TIP=null; RAILPOS=[null,null,null,null,null,null];
   const live=S.scene==='play';
-  const owned=UPGRADES.filter(u=>S.up[u.id]>0);
-  let y=RAIL.py;
+  const owned=UPGRADES.filter(u=>S.up[u.id]>0), acts=ACTIVES.filter((a,i)=>S.actOwn[i]);
+  if(!owned.length&&!acts.length) return;
+  const PW=40, PG=6, AH=54, AG=70;                                   /* passive tile / active card and its pitch */
+  const cb=counterBlock(), bottom=cb.y+cb.h;
+  const hPass=owned.length?22+Math.ceil(owned.length/3)*(PW+PG)+6:0;
+  const hAct=acts.length?22+acts.length*AG:0;
+  let y=bottom-hPass-hAct;
+  RAILAY=y;
+  if(S.patterT>0||S.steadyT>0||S.signalT>0){                          /* a running effect sits above the rail */
+    const sy=y-34;
+    if(S.patterT>0){ plate(RAIL.x+6,sy,RAIL.w-12,26,'#2a1e33','#a173c8'); txt('PATTER '+S.patterT.toFixed(1)+'s',RAIL.x+RAIL.w/2,sy+13,11,'#c9a3e0','center'); }
+    else if(S.steadyT>0){ plate(RAIL.x+6,sy,RAIL.w-12,26,'#1e2a18','#7fb74f'); txt('STEADY '+S.steadyT.toFixed(1)+'s',RAIL.x+RAIL.w/2,sy+13,11,'#a8d98a','center'); }
+    else { plate(RAIL.x+6,sy,RAIL.w-12,26,'#33200f','#f08a4a'); txt('SIGNAL '+S.signalT.toFixed(1)+'s',RAIL.x+RAIL.w/2,sy+13,11,'#f8b888','center'); }
+  }
   if(owned.length){
-    txt('PASSIVE',RAIL.x+8,y-12,10,C.dim);
+    txt('PASSIVE',RAIL.x+8,y+10,10,C.dim);
     owned.forEach((u,i)=>{
-      const cx=RAIL.x+6+(i%3)*38, cy=y+Math.floor(i/3)*38, lv=S.up[u.id];
-      plate(cx,cy,34,34,'#2a2218',C.gold);
-      blit(perkIcon(u.id,C.gold),cx+9,cy+9,2);
-      if(lv>1){ plate(cx+22,cy+22,12,12,'#2a2012',C.gold); txt(lv,cx+28,cy+28,8,C.gold,'center'); }
-      if(live&&inRect(MX,MY,{x:cx,y:cy,w:34,h:34}))
-        TIP={x:cx+40,y:cy,title:u.n,body:u.d,col:C.gold,
+      const cx=RAIL.x+6+(i%3)*(PW+PG), cy=y+22+Math.floor(i/3)*(PW+PG), lv=S.up[u.id];
+      plate(cx,cy,PW,PW,'#2a2218',C.gold);
+      blit(perkIcon(u.id,C.gold),cx+8,cy+8,3);
+      if(lv>1){ plate(cx+PW-15,cy+PW-15,15,15,'#2a2012',C.gold); txt(lv,cx+PW-7,cy+PW-7,9,C.gold,'center'); }
+      if(live&&inRect(MX,MY,{x:cx,y:cy,w:PW,h:PW}))
+        TIP={x:cx+PW+6,y:cy,title:u.n,body:u.d,col:C.gold,
              foot: lv>=u.max ? 'fully upgraded' : ('level '+lv+' of '+u.max+' · next '+u.cost[lv]+'c')};
     });
-    y+=Math.ceil(owned.length/3)*38+22;
+    y+=hPass;
   }
-  RAILAY=y;
-  const acts=ACTIVES.filter((a,i)=>S.actOwn[i]);
   if(!acts.length) return;
-  txt('ACTIVE',RAIL.x+8,y-12,10,C.gold);
-  txt('1-6',RAIL.x+RAIL.w-8,y-12,10,C.dimmer,'right');
+  txt('ACTIVE',RAIL.x+8,y+10,10,C.gold);
+  txt('KEYS 1-6',RAIL.x+RAIL.w-8,y+10,9,C.dimmer,'right');
   let n=0;
   ACTIVES.forEach((a,i)=>{
     if(!S.actOwn[i]) return;
-    const r={x:RAIL.x+6,y:y+n*58,w:RAIL.w-12,h:44};
+    const r={x:RAIL.x+6,y:y+22+n*AG,w:RAIL.w-12,h:AH};
     RAILPOS[i]=r; n++;
     const cd=S.actCd[i], ready=cd<=0, hov=inRect(MX,MY,r);
     plate(r.x,r.y,r.w,r.h, ready?(hov?'#3a2f1e':'#241d12'):'#141009', ready?a.col:'#4a3b2c');
@@ -2984,28 +3321,17 @@ function drawPerkRail(){
       g.globalAlpha=0.6; g.fillStyle='#0b0907';
       g.fillRect(r.x+3,r.y+3,r.w-6,Math.round((r.h-6)*(cd/a.cd))); g.globalAlpha=1;
     }
-    keycap(r.x+3,r.y+8,27,28,''+a.key,a.col,ready?'ready':'rest',(S.keyFx&&S.keyFx[i]>0));
-    blit(perkIcon(a.id,ready?a.col:'#6b5a45'),r.x+33,r.y+10,3);
-    if(a.id==='hire'&&S.handT>0) txt(S.handT.toFixed(0)+'s',r.x+r.w-25,r.y+r.h/2,13,a.col,'center');
-    else if(cd>0) txt(Math.ceil(cd)+'s',r.x+r.w-25,r.y+r.h/2,13,C.ink,'center');
-    else txt('READY',r.x+r.w-25,r.y+r.h/2,8,a.col,'center');
-    txt(a.n.split(' ').pop(),r.x+r.w/2,r.y+r.h+8,9,ready?a.col:C.dimmer,'center');
+    keycap(r.x+4,r.y+9,34,36,''+a.key,a.col,ready?'ready':'rest',(S.keyFx&&S.keyFx[i]>0));
+    blit(perkIcon(a.id,ready?a.col:'#6b5a45'),r.x+44,r.y+11,4);
+    if(a.id==='hire'&&S.handT>0) txt(S.handT.toFixed(0)+'s',r.x+r.w-28,r.y+r.h/2,15,a.col,'center');
+    else if(cd>0) txt(Math.ceil(cd)+'s',r.x+r.w-28,r.y+r.h/2,15,C.ink,'center');
+    else txt('READY',r.x+r.w-28,r.y+r.h/2,9,a.col,'center');
+    txt(a.n.split(' ').pop(),r.x+r.w/2,r.y+r.h+8,10,ready?a.col:C.dimmer,'center');
     if(live&&hov)
       TIP={x:r.x+r.w+10,y:r.y,title:a.n+(a.id==='hire'?' · LVL '+S.hire.lvl:''),body:a.id==='hire'?('KIT works the stall beside you for '+hired().dur+' seconds: files, sells and haggles.'):a.d,col:a.col,
            foot:'key '+a.key+' · '+a.cd+'s cooldown · '+(cd>0?(Math.ceil(cd)+'s to go'):'ready')};
     BTNS.push({x:r.x,y:r.y,w:r.w,h:r.h,fn:()=>fireActive(i)});
   });
-  const sy=y+n*58+6;
-  if(S.patterT>0){
-    plate(RAIL.x+6,sy,RAIL.w-12,26,'#2a1e33','#a173c8');
-    txt('PATTER '+S.patterT.toFixed(1)+'s',RAIL.x+RAIL.w/2,sy+13,11,'#c9a3e0','center');
-  } else if(S.steadyT>0){
-    plate(RAIL.x+6,sy,RAIL.w-12,26,'#1e2a18','#7fb74f');
-    txt('STEADY '+S.steadyT.toFixed(1)+'s',RAIL.x+RAIL.w/2,sy+13,11,'#a8d98a','center');
-  } else if(S.signalT>0){
-    plate(RAIL.x+6,sy,RAIL.w-12,26,'#33200f','#f08a4a');
-    txt('SIGNAL '+S.signalT.toFixed(1)+'s',RAIL.x+RAIL.w/2,sy+13,11,'#f8b888','center');
-  }
 }
 function drawPerkTip(){
   if(!TIP) return;
@@ -3076,7 +3402,7 @@ function drawDrag(){
 /* ================================================================
    OVERLAYS
    ================================================================ */
-function dim(a){ g.fillStyle='rgba(6,4,3,'+(a||0.7)+')'; g.fillRect(0,0,W,H); }
+function dim(a){ fillFull('rgba(6,4,3,'+(a||0.7)+')'); }
 function drawMenu(){
   dim(0.55);
   const w=700,h=560,x=W/2-w/2,y=104;
@@ -3106,8 +3432,12 @@ function drawDayIntro(){
   plate(x,y,w,h,'#1a1410','#6b5540','#8a6f50');
   txt('DAY '+S.day,W/2,y+48,36,C.ink,'center');
   txt('rent due at dusk: '+rentFor(S.day)+'c',W/2,y+88,18,C.gold,'center');
-  txt('caravan every '+Math.round(crateEvery(S.day))+'s, '+(crateSize(S.day)>3?'3-'+crateSize(S.day):'3')+' a crate  ·  customer every '+custEvery(S.day).toFixed(1)+'s',
+  const clo=crateLoad(S.day,crateLo(S.day)), chi=crateLoad(S.day,crateSize(S.day));
+  txt('caravan every '+Math.round(crateEvery(S.day))+'s, '+(chi>clo?clo+'-'+chi:''+clo)+' a crate  ·  customer every '+custEvery(S.day).toFixed(1)+'s',
       W/2,y+116,12,C.dim,'center','normal');
+  { const e=evToday(); if(e){ const up=e.m>1; plate(x+40,y+246,w-80,48,up?'#1e2a18':'#2a1a16',up?C.green:C.red);
+      txt('TODAY: '+CATS[e.cat].name+' PRICES '+evPct(e),W/2,y+262,15,up?C.green:C.red,'center');
+      txt(e.h.join(' ')+'  ·  the Herald',W/2,y+281,10,C.dim,'center','normal'); } }
   if(S.day===3) txt('NEW: bulk orders - buyers who want several at once.',W/2,y+146,14,'#e8b13c','center');
   else if(S.day===5) txt('NEW: the bad ones come to town.',W/2,y+146,14,C.red,'center');
   else if(S.day>1) txt('The road is busier. Patience is shorter.',W/2,y+146,13,C.dim,'center','normal');
@@ -3116,14 +3446,6 @@ function drawDayIntro(){
     txt('A HAND IS LOOKING FOR WORK AT THE FIXER',W/2,y+174,14,'#8fd0ee','center');
   else if(hd)
     txt(hd.who+' · lvl '+hd.lvl+' '+hd.n+' · '+hd.wage+'c a day',W/2,y+174,13,hd.col,'center','normal');
-  const nl=newLooksOn(S.day);
-  if(nl.length){
-    const kinds={hat:'costume',face:'costume',coat:'colour',awning:'colour',lantern:'colour',flag:'colour',pattern:'texture',wall:'texture'};
-    const cnt={};
-    nl.forEach(t=>{ const k=kinds[t.cat]||'thing'; cnt[k]=(cnt[k]||0)+1; });
-    const parts=Object.keys(cnt).map(k=>cnt[k]+' '+k+(cnt[k]>1?'s':''));
-    txt('NEW AT THE FIXER: '+parts.join(' · '),W/2,y+200,14,C.purple,'center');
-  }
   txt('purse '+S.caps+'c',W/2,y+228,13,C.dim,'center','normal');
   if(hd){
     const on=S.hire.on!==false;
@@ -3134,10 +3456,17 @@ function drawDayIntro(){
   button(W/2-140,y+h-72,280,50,'RAISE THE SHUTTER',
          ()=>{S.scene='play';S.sceneT=0;say(pick(['Another day.','Let\'s trade.','Dust\'s up. Open.']));},C.gold,17);
 }
-function paperDay(d){ return d>=5&&(d-5)%4===0; }          /* the Herald prints on day 5, 9, 13 ... */
-function afterPaper(){ if(S.day%5===0&&S.history.length){ S.scene='ledger'; S.sceneT=0; saveGame(); } else toHub(); }
-/* the Herald is delivered, not shoved in your face: it waits behind a button on the town page */
-function afterReport(){ if(paperDay(S.day)){ S.paperFresh=true; S.paperDay=S.day; } afterPaper(); }
+function paperDay(d){ return d>=4&&(d-4)%4===0; }          /* printed at dusk of day 4, 8, 12: read, and in force, on the morning of 5, 9, 13 */
+/* the Herald is delivered, not shoved in your face: it waits behind a button on the town page.
+   Closing the dusk report moves the calendar on: the town page is the NEXT MORNING, so S.day is the day about to be traded. */
+function afterReport(){
+  if(paperDay(S.day)){ rollEvent(); S.paperFresh=true; S.paperDay=S.day; }
+  const books=S.day%5===0&&S.history.length;
+  S.day++;
+  if(newLooksOn(S.day).length) S.looksFresh=true;             /* a NEW tab on STALL & LOOKS until it is opened */
+  if(S.day===2) S.fixerFresh=true;                             /* the first morning the Fixer can be visited */
+  if(books){ S.scene='ledger'; S.sceneT=0; saveGame(); } else toHub();
+}
 function leftovers(){
   let n=0,v=0;
   S.shelves.forEach(sh=>sh.slots.forEach(e=>{ if(e){ n++; v+=scrapValue(e.item); } }));
@@ -3176,6 +3505,7 @@ function drawReport(){
   if(rp.bulk>0) rows.push(['  of which bulk orders',rp.bulk+'']);
   rows.push(['Walked out',rp.angry+''],['Spilled',rp.spilled+''],['Best streak','x'+rp.combo]);
   if(rp.wage>0&&hh) rows.push([hh.who+"'s wage",'-'+rp.wage+'c']);
+  { const e=evToday(); if(e) rows.push(['Herald: '+CATS[e.cat].name+' '+evPct(e),(S.evGain>=0?'+':'')+(S.evGain||0)+'c']); }
   if(rp.mats>0) rows.push(['Materials (already paid)',rp.mats+'c']);
   rows.push(['Rent','-'+rp.rent+'c']);
   let yy=y+100;
@@ -3204,9 +3534,11 @@ function drawReport(){
 /* A keyboard key, seen a little from above. state: 'ready' | 'rest' | 'off';  down = pressed this instant */
 function keycap(x,y,w,h,label,col,state,down){
   x=Math.round(x); y=Math.round(y);
-  const live=state==='ready', top=live?'#ddd2ba':(state==='rest'?'#8f8776':'#5e584d'),
-        hi=live?'#f6eed8':(state==='rest'?'#a59c89':'#6e675b'), side=live?'#9c9078':(state==='rest'?'#5f594c':'#403c34'),
-        ink=live?'#1a1410':(state==='rest'?'#2e2a23':'#2a2722'), lift=down?0:3;
+  const live=state==='ready', rust=state==='rust',
+        top=rust?'#7a4a2a':live?'#ddd2ba':(state==='rest'?'#8f8776':'#5e584d'),
+        hi=rust?'#9a6238':live?'#f6eed8':(state==='rest'?'#a59c89':'#6e675b'),
+        side=rust?'#4a2c18':live?'#9c9078':(state==='rest'?'#5f594c':'#403c34'),
+        ink=rust?'#f0d8b0':live?'#1a1410':(state==='rest'?'#2e2a23':'#2a2722'), lift=down?0:3;
   g.fillStyle='#0a0806'; g.fillRect(x,y+2,w,h);                                  /* shadow / base */
   g.fillStyle='#2a251d'; g.fillRect(x+1,y+1,w-2,h);                              /* outline */
   g.fillStyle=side; g.fillRect(x+2,y+2,w-4,h-2);                                 /* side wall */
@@ -3217,6 +3549,8 @@ function keycap(x,y,w,h,label,col,state,down){
   g.fillStyle='#2a251d'; g.fillRect(tx,ty,1,1); g.fillRect(tx+tw-1,ty,1,1); g.fillRect(tx,ty+th-1,1,1); g.fillRect(tx+tw-1,ty+th-1,1,1);   /* rounded corners */
   txt(label,tx+tw/2,ty+th/2-1,Math.round(h*0.5),ink,'center');
   g.fillStyle=live?col:side; g.fillRect(tx+4,ty+th-4,tw-8,2);                     /* the perk's colour, like a painted legend */
+  if(rust){ g.fillStyle='#c8702a'; g.fillRect(tx+2+((x*7)%Math.max(1,tw-8)),ty+2+((y*5)%Math.max(1,th-6)),3,2);   /* rust flecks */
+            g.fillStyle='#2e160c'; g.fillRect(tx+tw-5-((x*3)%4),ty+th-5-((y*3)%3),2,2); }
 }
 function shopCard(cx,cy,cw,ch,icon,col,title,desc,lvl,max,price,afford,fn,keyTag){
   const hov=afford&&inRect(MX,MY,{x:cx,y:cy,w:cw,h:ch});
@@ -3237,12 +3571,18 @@ function shopCard(cx,cy,cw,ch,icon,col,title,desc,lvl,max,price,afford,fn,keyTag
    THE TOWN  -  the page every day starts from. Everything you can do
    off the stall hangs off here; the Fixer is one door among several.
    ================================================================ */
-let CITY_IMG=null;
-function buildCity(){
+let CITY_IMG=null, CITY_DUSK=null;
+/* mode 'dawn' (the town page: every visit is the next morning) or 'dusk' (the intro) */
+function buildCity(mode){
+  const dawn=mode!=='dusk';
   const Wc=150,Hc=80, c=makeCanvas(Wc,Hc), x=c.getContext('2d');
   const px=(a,b,w,h,col)=>{ x.fillStyle=col; x.fillRect(Math.round(a),Math.round(b),Math.round(w),Math.round(h)); };
-  ['#2a2238','#3d2c40','#5a3644','#7d4440','#a85c3a','#cf7c3a','#e39a48'].forEach((col,i)=>px(0,i*8,Wc,9,col));
-  for(let dy=-13;dy<=13;dy++){ const w=Math.floor(Math.sqrt(169-dy*dy)); px(104-w,40+dy,w*2+1,1,dy<-4?'#f6d08a':'#f0b060'); }
+  (dawn?['#2c2a4e','#4a3a62','#7a4a5c','#b06a50','#dc9458','#f2bc70','#fbe0a0']:['#2a2238','#3d2c40','#5a3644','#7d4440','#a85c3a','#cf7c3a','#e39a48']).forEach((col,i)=>px(0,i*8,Wc,9,col));
+  if(dawn){                                                   /* the sun coming up behind the wall, rays fanning out */
+    for(let r=0;r<9;r++){ const a=-Math.PI*0.95+r*(Math.PI*0.9/8); for(let k=18;k<80;k+=2) px(104+Math.cos(a)*k,58+Math.sin(a)*k,2,1,'rgba(255,240,190,0.35)'); }
+    for(let dy=-17;dy<=0;dy++){ const w=Math.floor(Math.sqrt(289-dy*dy)); px(104-w,58+dy,w*2+1,1,dy<-9?'#fff4c8':'#ffd884'); }
+    [[20,16],[27,13],[34,17],[118,20],[124,18]].forEach(b=>{ px(b[0],b[1],1,1,'#3a2a3a'); px(b[0]+1,b[1]-1,1,1,'#3a2a3a'); px(b[0]+2,b[1],1,1,'#3a2a3a'); });
+  } else for(let dy=-13;dy<=13;dy++){ const w=Math.floor(Math.sqrt(169-dy*dy)); px(104-w,40+dy,w*2+1,1,dy<-4?'#f6d08a':'#f0b060'); }
   let sd=19; const rn=()=>{ sd=(sd*1103515245+12345)&0x7fffffff; return sd/0x7fffffff; };
   /* far ruins */
   let fx=0; while(fx<Wc){ const w=4+rn()*7, h=8+rn()*16; px(fx,58-h,w,h,'#6b3f40'); if(rn()<0.4) px(fx+1,58-h-3,2,3,'#6b3f40'); fx+=w+1; }
@@ -3251,7 +3591,7 @@ function buildCity(){
     const bx=t[0], h=t[1], w=t[2], top=60-h;
     px(bx,top,w,h,'#2e2230'); px(bx,top,2,h,'#3d2e3e');
     for(let k=0;k<w;k+=2) px(bx+k,top-(rn()*4|0),2,4,'#2e2230');                  /* ragged crown */
-    for(let wy=top+4;wy<58;wy+=5) for(let wx=bx+2;wx<bx+w-2;wx+=3) if(rn()<0.16) px(wx,wy,1,2,'#f0c060');
+    for(let wy=top+4;wy<58;wy+=5) for(let wx=bx+2;wx<bx+w-2;wx+=3) if(rn()<0.16) px(wx,wy,1,2,dawn?'#4a3a4a':'#f0c060');   /* lamps are out by morning */
   });
   /* water tower and windmill */
   px(58,30,10,7,'#241a26'); px(57,29,12,1,'#3d2e3e'); px(59,37,1,22,'#241a26'); px(66,37,1,22,'#241a26'); px(59,46,8,1,'#241a26');
@@ -3259,56 +3599,86 @@ function buildCity(){
   /* the wall, gate and lamps */
   px(0,60,Wc,8,'#1d1620'); for(let k=0;k<Wc;k+=6) px(k,58,3,2,'#1d1620');
   px(68,56,14,12,'#140f16'); px(70,58,10,10,'#2a1c18'); px(66,54,18,2,'#3d2e3e');
-  [[64,57],[85,57]].forEach(l=>{ px(l[0],l[1],2,2,'#f6d874'); px(l[0]-1,l[1]-1,4,1,'#1d1620'); });
+  [[64,57],[85,57]].forEach(l=>{ px(l[0],l[1],2,2,dawn?'#6a5a4a':'#f6d874'); px(l[0]-1,l[1]-1,4,1,'#1d1620'); });
   /* dunes in front */
   px(0,68,Wc,12,'#3a2a22'); for(let k=0;k<16;k++){ const dx=rn()*Wc; px(dx,69+rn()*9,6+rn()*10,1,k%2?'#4a362a':'#2a1e18'); }
   px(20,66,18,2,'#3a2a22'); px(96,66,26,2,'#3a2a22');
   return c;
 }
-function hubOpenDay(){ if(S.fresh){ S.fresh=false; S.scene='dayintro'; S.sceneT=0; } else nextDay(); }
+function hubOpenDay(){ S.fresh=false; startDay(); }
 function toHub(){ S.scene='hub'; S.sceneT=0; saveGame(); }          /* every arrival in town is a save */
 function buyBench(){
   if(S.wb){ enterWorkshop(); return; }
   if(S.caps<CRAFT.price){ Snd.bad(); return; }
-  S.caps-=CRAFT.price; S.wb=true; S.wbDay=S.day+1; achInc('bench'); Snd.coin(6); flash('#8fd0ee',0.25); enterWorkshop();
+  S.caps-=CRAFT.price; S.wb=true; S.wbDay=S.day; achInc('bench'); Snd.coin(6); flash('#8fd0ee',0.25); enterWorkshop();
 }
+const HUB_PX={
+ fixer:['.....kk.','....kkkk','....kk.k','...kkkk.','..kkk...','.kkk....','kkk.....','kk......'],
+ bench:['..kkkk..','..kkkkk.','..kkkkk.','..kkkk..','....k...','....k...','....k...','....k...'],
+ rig:  ['..kkkk..','.kkkkkk.','.kk..kk.','kkkkkkkk','k.k..k.k','k.k..k.k','k.k..k.k','.k....k.'],
+ looks:['...kk...','..kkkk..','..kkkk..','..kkkk..','kkkkkkkk','kkkkkkkk','........','........'],
+ book: ['kkkkkkkk','k..kk..k','k..kk..k','k..kk..k','k..kk..k','k..kk..k','kkkkkkkk','...kk...'],
+ map:  ['...k....','..kkk...','.k.k.k..','kkkkkkk.','.k.k.k..','..kkk...','...k....','........'],
+ ach:  ['kkkkkkkk','k.kkkk.k','k.kkkk.k','.kkkkkk.','..kkkk..','...kk...','..kkkk..','.kkkkkk.'],
+ paper:['kkkkkkk.','k.....k.','k.kk..k.','k.kk.kk.','k....kkk','k.kkk.kk','k.....kk','kkkkkkkk']
+};
+const HUB_SPR={};
+function hubIcon(id,col){ const k=id+col; if(!HUB_SPR[k]) HUB_SPR[k]=spriteFrom(HUB_PX[id],{k:col}); return HUB_SPR[k]; }
+/* a town door: a button with its icon on the left */
+function door(x,y,w,h,label,fn,col,size,icon){ button(x,y,w,h,label,fn,col,size); blit(hubIcon(icon,col),x+12,y+h/2-8,2); }
+function newTab(x,y,w,h){ const p=Math.sin(S.t*6)>-0.2;                                  /* the blinking NEW tab and gold frame on a door */
+  g.fillStyle=p?C.red:'#7a2f22'; g.fillRect(x+w-52,y-8,58,20); txt('NEW',x+w-23,y+2,11,'#fff0d8','center');
+  g.strokeStyle=C.gold; g.lineWidth=3; if(p) g.strokeRect(x-3,y-3,w+6,h+6); }
 function drawHub(){
-  dim(0.8);
+  { const r=fullRect(); plate(r.x,r.y,r.w,r.h,'#1a1410','#6b5540','#8a6f50'); }        /* a page of its own, edge to edge */
   const x=70,y=78,w=W-140,h=H-98;
-  plate(x,y,w,h,'#1a1410','#6b5540','#8a6f50');
   txt('DUSTWELL',x+30,y+36,28,C.gold);
-  txt(S.fresh?'before your first day':('the night after day '+S.day),x+30,y+64,12,C.dim,'left','normal');
-  txt('purse '+S.caps+'c   ·   rent '+(S.fresh?'tonight ':'tomorrow ')+rentFor(S.fresh?S.day:S.day+1)+'c',x+w-30,y+36,14,C.ink,'right');
+  { const e=S.paperFresh?null:evToday(); if(e){ const up=e.m>1; txt('TODAY: '+CATS[e.cat].name+' '+evPct(e)+'  ·  '+e.h.join(' '),x+w-30,y+62,12,up?C.green:C.red,'right'); } }
+  txt('morning of day '+S.day,x+30,y+64,12,C.dim,'left','normal');
   /* the town, in the middle */
-  if(!CITY_IMG) CITY_IMG=buildCity();
+  if(!CITY_IMG) CITY_IMG=buildCity('dawn');
   const iw=600, ih=320, ix=W/2-iw/2, iy=y+96;
   plate(ix-6,iy-6,iw+12,ih+12,'#0d0a08','#5c4a37');
   g.imageSmoothingEnabled=false; g.drawImage(CITY_IMG,ix,iy,iw,ih);
-  [[64,57],[85,57]].forEach((l,i)=>{ const p=0.5+Math.sin(S.t*3+i*2)*0.25; const gx=ix+l[0]*4+4, gy=iy+l[1]*4+4, gr=g.createRadialGradient(gx,gy,2,gx,gy,40);
-    gr.addColorStop(0,'rgba(246,216,116,'+(0.5*p)+')'); gr.addColorStop(1,'rgba(246,216,116,0)'); g.fillStyle=gr; g.fillRect(gx-40,gy-40,80,80); });
+  { const p=0.6+Math.sin(S.t*1.2)*0.2, gx=ix+104*4+2, gy=iy+58*4, gr=g.createRadialGradient(gx,gy,10,gx,gy,150);   /* the sun's glow breathes */
+    gr.addColorStop(0,'rgba(255,236,170,'+(0.45*p)+')'); gr.addColorStop(1,'rgba(255,200,120,0)'); g.fillStyle=gr; g.fillRect(gx-150,gy-150,300,300); }
   /* doors, left and right of it */
   const bw=216, bh=58, gp=12, lx=x+30, rx=x+w-30-bw, by=iy;
   const nl=newLooksOn(S.day).length, canWb=S.wb||S.caps>=CRAFT.price;
-  button(lx,by,bw,bh,'THE FIXER',()=>{S.scene='shop';S.sceneT=0;},C.gold,15);
-  button(lx,by+(bh+gp),bw,bh,S.wb?'THE WORKBENCH':('WORKBENCH · '+CRAFT.price+'c'),()=>buyBench(),canWb?'#8fd0ee':C.dimmer,S.wb?13:11);
-  button(lx,by+(bh+gp)*2,bw,bh,'TRANSPORT '+rigCount()+'/'+RIG.length,()=>{S.scene='transport';S.sceneT=0;},rigDone()?C.gold:'#c8a070',13);
-  button(lx,by+(bh+gp)*3,bw,bh,'STALL & LOOKS'+(nl?' *':''),()=>{S.scene='looks';},nl?C.purple:C.dim,13);
-  button(rx,by,bw,bh,'THE LEDGER',()=>{S.scene='ledger';},S.history.length?C.green:C.dimmer,13);
-  button(rx,by+(bh+gp),bw,bh,'THE MAP',()=>openPage('map'),'#8fd0ee',13);
-  button(rx,by+(bh+gp)*2,bw,bh,'ACHIEVEMENTS '+achCount()+'/'+ACH.length,()=>openPage('ach'),C.gold,10);
+  door(lx,by,bw,bh,'THE FIXER',()=>{ S.fixerFresh=false; S.scene='shop'; S.sceneT=0; },C.gold,15,'fixer');
+  if(S.fixerFresh) newTab(lx,by,bw,bh);
+  door(lx,by+(bh+gp),bw,bh,S.wb?'THE WORKBENCH':('WORKBENCH · '+CRAFT.price+'c'),()=>buyBench(),canWb?'#8fd0ee':C.dimmer,S.wb?13:11,'bench');
+  if(S.day>=RIG_DAY){ door(lx,by+(bh+gp)*2,bw,bh,'TRANSPORT',()=>{S.scene='transport';S.sceneT=0;},rigDone()?C.gold:'#c8a070',13,'rig'); if(S.day===RIG_DAY) newTab(lx,by+(bh+gp)*2,bw,bh); }
+  else { const ty=by+(bh+gp)*2; plate(lx,ty,bw,bh,'#15110d','#33291f'); blit(hubIcon('rig',C.dimmer),lx+12,ty+bh/2-8,2);
+    txt('TRANSPORT',lx+bw/2,ty+bh/2-6,13,C.dimmer,'center'); txt('opens on day '+RIG_DAY,lx+bw/2,ty+bh/2+13,9,C.dimmer,'center','normal'); }
+  door(lx,by+(bh+gp)*3,bw,bh,'STALL & LOOKS',()=>{ S.looksFresh=false; S.scene='looks'; S.sceneT=0; },nl?C.purple:C.dim,13,'looks');
+  if(S.looksFresh) newTab(lx,by+(bh+gp)*3,bw,bh);                                          /* new stock in the wardrobe */
+  door(rx,by,bw,bh,'THE LEDGER',()=>{S.scene='ledger';},S.history.length?C.green:C.dimmer,13,'book');
+  door(rx,by+(bh+gp),bw,bh,'THE MAP',()=>openPage('map'),'#8fd0ee',13,'map');
+  door(rx,by+(bh+gp)*2,bw,bh,'ACHIEVEMENTS '+achCount()+'/'+ACH.length,()=>openPage('ach'),C.gold,10,'ach');
   { const has=!!S.paperDay, fresh=!!S.paperFresh, hy=by+(bh+gp)*3;
-    if(has) button(rx,hy,bw,bh,'THE HERALD',()=>{ S.paperFresh=false; S.scene='paper'; S.sceneT=0; saveGame(); },fresh?C.gold:C.dim,13);
-    else { plate(rx,hy,bw,bh,'#15110d','#33291f'); txt('THE HERALD',rx+bw/2,hy+bh/2-6,13,C.dimmer,'center'); txt('no paper yet',rx+bw/2,hy+bh/2+13,9,C.dimmer,'center','normal'); }
-    if(fresh){ const p=Math.sin(S.t*6)>-0.2;                       /* a fresh paper is hard to miss */
-      g.fillStyle=p?C.red:'#7a2f22'; g.fillRect(rx+bw-52,hy-8,58,20); txt('NEW',rx+bw-23,hy+2,11,'#fff0d8','center');
-      g.strokeStyle=C.gold; g.lineWidth=3; if(p) g.strokeRect(rx-3,hy-3,bw+6,bh+6); }
+    if(has) door(rx,hy,bw,bh,'THE HERALD',()=>{ S.paperFresh=false; S.scene='paper'; S.sceneT=0; saveGame(); },fresh?C.gold:C.dim,13,'paper');
+    else { plate(rx,hy,bw,bh,'#15110d','#33291f'); blit(hubIcon('paper',C.dimmer),rx+12,hy+bh/2-8,2); txt('THE HERALD',rx+bw/2,hy+bh/2-6,13,C.dimmer,'center'); txt('no paper yet',rx+bw/2,hy+bh/2+13,9,C.dimmer,'center','normal'); }
+    if(fresh) newTab(rx,hy,bw,bh);                                 /* a fresh paper is hard to miss */
     else if(has) txt('day '+S.paperDay+"'s paper",rx+bw/2,hy+bh-9,8,C.dimmer,'center','normal'); }
   if(!S.wb&&inRect(MX,MY,{x:lx,y:by+(bh+gp),w:bw,h:bh})){
     plate(lx+bw+10,by+(bh+gp)-8,360,84,'#14100c','#8fd0ee');
     txt('THE WORKBENCH',lx+bw+24,by+(bh+gp)+10,12,'#8fd0ee');
     wrapText('Buy materials, craft your own goods and refine them up to LEGENDARY.',lx+bw+24,by+(bh+gp)+30,332,14,10,C.ink);
   }
-  button(W/2-230,iy+ih+28,460,62,'OPEN THE STALL  ·  DAY '+(S.fresh?S.day:S.day+1),()=>hubOpenDay(),C.gold,18);
+  button(W/2-230,iy+ih+28,460,62,'OPEN THE STALL  ·  DAY '+S.day,()=>hubOpenDay(),C.gold,18);
+  { const notes=[];                                         /* what came in overnight, at the foot of the page */
+    if(S.day===2) notes.push(['NEW AT THE FIXER: perks and active skills are for sale',C.gold,'#231c10']);
+    if(S.day===RIG_DAY) notes.push(['NEW: TRANSPORT is open - the Strider parts are for sale','#c8a070','#221a12']);
+    const nl=newLooksOn(S.day);
+    if(nl.length){
+      const kinds={hat:'costume',face:'costume',coat:'colour',awning:'colour',lantern:'colour',flag:'colour',pattern:'texture',wall:'texture'}, cnt={};
+      nl.forEach(t=>{ const k=kinds[t.cat]||'thing'; cnt[k]=(cnt[k]||0)+1; });
+      const parts=Object.keys(cnt).map(k=>cnt[k]+' '+k+(cnt[k]>1?'s':''));
+      notes.push(['NEW AT STALL & LOOKS: '+parts.join(' · '),C.purple,'#1d1520']);
+    }
+    notes.forEach((nt,i)=>{ const mw=txtw(nt[0],14)+40, ny=y+h-52-i*44; plate(W/2-mw/2,ny,mw,36,nt[2],nt[1]); txt(nt[0],W/2,ny+18,14,nt[1],'center'); });
+    if(!notes.length) txt('nothing new in town this morning',W/2,y+h-34,10,C.dimmer,'center','normal'); }
 }
 function buyActive(i){
   const a=ACTIVES[i];
@@ -3397,7 +3767,7 @@ function drawLooks(){
     txt('nothing on trial',x+172,y+423,12,C.dimmer,'center','normal');
   }
   button(x+24,y+468,296,36,'BACK TO TOWN',()=>{dropTries();S.editName=false;toHub();},C.dim,12);
-  button(x+24,y+510,296,44,'OPEN THE STALL · DAY '+(S.fresh?S.day:S.day+1),()=>{dropTries();S.editName=false;hubOpenDay();},C.gold,12);
+  button(x+24,y+510,296,44,'OPEN THE STALL · DAY '+S.day,()=>{dropTries();S.editName=false;hubOpenDay();},C.gold,12);
   const cx=x+336;
   txt('THE MERCHANT',cx,y+96,13,C.gold);
   lookRow('HAT','hat',cx,y+108,58,40);
@@ -3521,30 +3891,56 @@ function drawLedger(){
   for(let sy=y; sy<y+h; sy+=3) g.fillRect(x,sy,w,1);
   g.globalAlpha=0.05+Math.sin(S.t*24)*0.02; g.fillStyle=PH.hi; g.fillRect(x,y,w,h); g.globalAlpha=1;
 }
-let PAPER_IMG=null;
-function buildPaperImg(){
+/* one picture per story: a backdrop for the family (weather / military / town) and the goods it is about in front;
+   a glut ("prices down") shows twice the goods. Newsprint greys, and the same speckle as before so it looks printed. */
+const PAPER_IMGS={};
+function paperImg(ev){ const k=ev.id+(ev.m>1?'+':'-'); if(!PAPER_IMGS[k]) PAPER_IMGS[k]=buildPaperImg(ev); return PAPER_IMGS[k]; }
+function buildPaperImg(ev){
   const c=makeCanvas(96,54), x=c.getContext('2d');
-  const px=(a,b,w,h,col)=>{ x.fillStyle=col; x.fillRect(a,b,w,h); };
-  const sky=['#cdc2aa','#c6bba3','#bdb29a','#b4a991'];
-  for(let i=0;i<4;i++) px(0,i*8,96,8,sky[i]);
-  for(let dy=-5;dy<=5;dy++){ const w=Math.floor(Math.sqrt(25-dy*dy)); px(70-w,12+dy,w*2+1,1,'#e0d6be'); }
-  let rx=0,seed=11;
-  while(rx<96){ seed=(seed*1103515245+12345)&0x7fffffff;
-    const w=4+(seed>>8)%9, h=6+(seed>>4)%16;
-    px(rx,32-h,w,h+2,'#8e8474'); rx+=w+2; }
-  px(14,16,9,6,'#6b6254'); px(16,22,2,10,'#6b6254'); px(20,22,2,10,'#6b6254'); px(13,15,11,1,'#4a4438');
-  rx=0; seed=29;
-  while(rx<96){ seed=(seed*1103515245+12345)&0x7fffffff;
-    const w=6+(seed>>7)%10, h=4+(seed>>3)%12;
-    px(rx,36-h,w,h+5,'#5e564a');
-    for(let wy=36-h+2; wy<36; wy+=3) for(let wx=rx+1; wx<rx+w-1; wx+=3)
-      if(((wx*5+wy*7)%4)===0) px(wx,wy,1,1,'#332e26');
-    rx+=w+3; }
-  px(0,41,96,13,'#9a8f79'); px(0,45,96,6,'#7e735f');
-  for(let i=0;i<96;i+=8) px(i,47,4,1,'#cdc2aa');
-  px(60,38,14,5,'#5e564a'); px(63,35,8,3,'#6b6254');
-  px(61,43,3,2,'#332e26'); px(70,43,3,2,'#332e26');
-  px(30,36,2,6,'#332e26'); px(29,33,4,3,'#332e26');
+  const px=(a,b,w,h,col)=>{ x.fillStyle=col; x.fillRect(Math.round(a),Math.round(b),Math.round(w),Math.round(h)); };
+  const NP=['#e0d6be','#cdc2aa','#b4a991','#9a8f79','#7e735f','#5e564a','#332e26'];
+  const up=!ev||ev.m>1, type=ev?ev.type:'town', cat=ev?ev.cat:'food';
+  let seed=11; const rn=()=>{ seed=(seed*1103515245+12345)&0x7fffffff; return seed/0x7fffffff; };
+  const skyC=up?[NP[3],NP[2],NP[2],NP[1]]:[NP[1],NP[1],NP[0],NP[0]];
+  for(let i=0;i<4;i++) px(0,i*8,96,9,skyC[i]);
+  let rx=0;
+  if(type==='weather'){
+    const id=ev?ev.id:'', stormy=id==='dust'||id==='acid', cold=id==='cold';      /* the sky follows the story */
+    if(stormy){ for(let i=0;i<9;i++){ const cx=rn()*96, cy=2+rn()*12, w=10+rn()*16; px(cx,cy,w,4,NP[5]); px(cx+2,cy+4,w-4,2,NP[4]); }
+            for(let i=0;i<40;i++){ const sx=rn()*96, sy=6+rn()*30; px(sx,sy,1,4,NP[4]); px(sx-1,sy+4,1,2,NP[4]); } }
+    else if(cold){ for(let dy=-4;dy<=4;dy++){ const w=Math.floor(Math.sqrt(16-dy*dy)); px(74-w,10+dy,w*2+1,1,NP[1]); }
+            for(let i=0;i<50;i++) px(rn()*96,2+rn()*36,1,1,NP[0]); }
+    else { const R=up?9:7; for(let dy=-R;dy<=R;dy++){ const w=Math.floor(Math.sqrt(R*R-dy*dy)); px(70-w,12+dy,w*2+1,1,NP[0]); }
+           for(let r=0;r<7;r++){ const a=-2.9+r*0.5; for(let k=R+3;k<34;k+=2) px(70+Math.cos(a)*k,12+Math.sin(a)*k,1,1,NP[0]); } }
+    px(0,38,96,16,NP[3]); px(0,42,96,12,NP[4]);
+    for(let i=0;i<12;i++) px(rn()*96,40+rn()*12,6+rn()*10,1,NP[2]);
+  } else if(type==='military'){
+    while(rx<96){ const w=6+rn()*12, h=8+rn()*14; px(rx,34-h,w,h+4,NP[4]); px(rx,34-h,w,1,NP[3]); rx+=w; }
+    px(0,36,96,18,NP[5]); px(0,40,96,14,NP[4]);
+    const fires=up?5:1;
+    for(let i=0;i<fires;i++){ const fx=8+i*18+rn()*8, fy=30-rn()*8; px(fx,fy,3,2,NP[0]); px(fx-1,fy+2,5,2,NP[1]);
+      if(up) for(let k=1;k<8;k++) px(fx+1+Math.sin(k*0.9)*1.5,fy-k*2,2+(k>3?1:0),2,NP[2]); }
+    if(!up){ px(70,10,1,22,NP[6]); px(71,10,9,6,NP[0]); px(71,10,9,1,NP[5]); }
+  } else {
+    for(let dy=-5;dy<=5;dy++){ const w=Math.floor(Math.sqrt(25-dy*dy)); px(70-w,12+dy,w*2+1,1,NP[0]); }
+    while(rx<96){ const w=4+rn()*9, h=6+rn()*16; px(rx,32-h,w,h+2,NP[3]); rx+=w+2; }
+    px(14,16,9,6,NP[4]); px(16,22,2,10,NP[4]); px(20,22,2,10,NP[4]); px(13,15,11,1,NP[5]);
+    rx=0; while(rx<96){ const w=6+rn()*10, h=4+rn()*12; px(rx,36-h,w,h+5,NP[5]);
+      for(let wy=36-h+2;wy<36;wy+=3) for(let wx=rx+1;wx<rx+w-1;wx+=3) if(((wx*5+wy*7)%4)===0) px(wx,wy,1,1,NP[6]); rx+=w+3; }
+    px(0,41,96,13,NP[3]); px(0,45,96,6,NP[4]); for(let i=0;i<96;i+=8) px(i,47,4,1,NP[1]);
+  }
+  const sub=(ox,oy)=>{
+    if(cat==='food'){ px(ox,oy+8,20,10,NP[4]); px(ox+1,oy+9,18,1,NP[3]); px(ox,oy+8,20,1,NP[5]);
+      for(let r=0;r<2;r++) for(let i=0;i<(r?2:3);i++){ const tx=ox+22+i*7+r*3, ty=oy+11-r*8; px(tx,ty,6,7,NP[2]); px(tx,ty,6,1,NP[0]); px(tx,ty+3,6,2,NP[5]); px(tx,ty+6,6,1,NP[4]); } }
+    else if(cat==='meds'){ px(ox,oy+6,16,11,NP[1]); px(ox,oy+6,16,3,NP[0]); px(ox,oy+6,16,1,NP[4]); px(ox+6,oy+9,4,7,NP[6]); px(ox+4,oy+11,8,3,NP[6]);
+      px(ox+19,oy+7,4,10,NP[3]); px(ox+20,oy+5,2,2,NP[5]); px(ox+25,oy+9,4,8,NP[2]); px(ox+26,oy+7,2,2,NP[5]); }
+    else if(cat==='guns'){ px(ox,oy+13,26,4,NP[3]); px(ox+2,oy+9,22,4,NP[3]); px(ox+4,oy+5,18,4,NP[3]); [oy+13,oy+9,oy+5].forEach(yy=>px(ox,yy,26,1,NP[1]));
+      for(let i=0;i<2;i++){ const gx=ox+6+i*9; px(gx,oy-4,1,18,NP[6]); px(gx+1,oy-2,1,3,NP[6]); px(gx-1,oy+6,3,6,NP[5]); } }
+    else { px(ox,oy+3,8,14,NP[5]); px(ox+1,oy+4,6,2,NP[1]); px(ox+2,oy+1,4,2,NP[6]); px(ox+1,oy+8,6,1,NP[3]);
+      px(ox+11,oy+9,14,8,NP[4]); for(let yy=oy+10;yy<oy+16;yy+=2) for(let xx=ox+12;xx<ox+24;xx+=2) px(xx,yy,1,1,NP[1]);
+      px(ox+29,oy-4,1,21,NP[6]); px(ox+26,oy-2,7,1,NP[6]); px(ox+27,oy+1,5,1,NP[6]); }
+  };
+  sub(8,36); if(!up) sub(52,36);
   for(let i=0;i<200;i++){ const gx=(i*37)%96, gy=(i*53)%54; px(gx,gy,1,1,'rgba(40,34,26,0.10)'); }
   return c;
 }
@@ -3561,23 +3957,25 @@ function drawPaper(){
   txt('WIND FROM THE EAST',x+w/2,y+82,12,FADE,'center','normal');
   txt('PRICE: ONE CHIT',x+w-34,y+82,12,FADE,'right','normal');
   g.fillStyle=FADE; g.fillRect(x+30,y+92,w-60,1);
-  if(!PAPER_IMG) PAPER_IMG=buildPaperImg();
+  const ev=S.event||EVENTS[0], evDef=EVENTS.find(e=>e.id===ev.id)||ev;   /* a stored event from an older build has no caption */
   const ix=x+34, iy=y+108;
   g.fillStyle=INK; g.fillRect(ix-3,iy-3,96*3+6,54*3+6);
-  blit(PAPER_IMG,ix,iy,3);
-  txt('The east road, yesterday.',ix,iy+54*3+16,11,FADE,'left','normal');
+  blit(paperImg(ev),ix,iy,3);
+  txt(ev.pic||evDef.pic||'The east road, yesterday.',ix,iy+54*3+16,11,FADE,'left','normal');
   const tx2=ix+96*3+26, tw2=x+w-34-tx2;
-  txt('MEDS PRICES',tx2,y+134,30,INK,'left');
-  txt('GO UP!',tx2,y+168,30,INK,'left');
-  g.fillStyle=INK; g.fillRect(tx2,y+184,tw2,2);
-  wrapText('Two caravans turned back at the ridge this week and the clinic is rationing again. Traders on the strip report mend shots moving at twice the usual ask.',
-           tx2,y+204,tw2,17,12,INK);
-  wrapText('"Folk will pay what folk must," said one stallholder, who declined to give a name.',
-           tx2,y+286,tw2,17,12,FADE);
+  blit(EV_SPR[ev.type],tx2+tw2-34,y+112,4);
+  txt(ev.type.toUpperCase(),tx2,y+114,10,FADE,'left','normal');
+  txt(ev.h[0],tx2,y+142,28,INK,'left');
+  txt(ev.h[1],tx2,y+174,28,INK,'left');
+  g.fillStyle=INK; g.fillRect(tx2,y+192,tw2,2);
+  let py2=wrapText(ev.b,tx2,y+212,tw2,16,11,INK);
+  wrapText(ev.q,tx2,py2+22,tw2,16,11,FADE);
+  { const up=ev.m>1, stale=ev.day<S.day;                /* the part the trader actually needs; read in the morning it says TODAY */
+    g.fillStyle=INK; g.fillRect(tx2,y+318,tw2,44); g.fillStyle='#d8cdb4'; g.fillRect(tx2+3,y+321,tw2-6,38);
+    txt(stale?('DAY '+ev.day):'TODAY',tx2+12,y+340,10,FADE,'left','normal');
+    txt(CATS[ev.cat].name+' PRICES '+(up?'UP ':'DOWN ')+evPct(ev),tx2+tw2-12,y+340,15,INK,'right'); }
   g.fillStyle=FADE; g.fillRect(x+30,y+372,w-60,1);
-  const cols=[['RAIDERS SEEN NORTH','Three trucks, no colours flown.'],
-              ['WATER TOWER HOLDS','Council votes to patch it again.'],
-              ['ASH PLUM GLUT','Growers say the crop came early.']];
+  const cols=(S.event&&S.event.fill)||EV_FILL.slice(0,3);
   const colw=(w-68)/3;
   cols.forEach((c2,i)=>{
     const cx2=x+34+i*colw;
@@ -3618,8 +4016,8 @@ function draw(){
   g.save();
   g.clearRect(0,0,cv.width,cv.height);
   g.translate(VX,VY); g.scale(VS,VS);
+  g.beginPath(); g.rect(-EXX,-EXY,W+2*EXX,H+2*EXY); g.clip();       /* the frame is the window, not the 1280x760 box */
   if(S.shake>0.2) g.translate(Math.round(rnd(-S.shake,S.shake)),Math.round(rnd(-S.shake,S.shake)));
-  g.beginPath(); g.rect(0,0,W,H); g.clip();
   drawScene();
   const world = S.scene==='play'||S.scene==='dayintro'||S.scene==='report';
   if(world){
@@ -3631,6 +4029,8 @@ function draw(){
   if(S.scene==='title') drawTitle();
   else if(S.scene==='slots') drawSlots();
   else if(S.scene==='howto') drawMenu();
+  else if(S.scene==='intro') drawIntro();
+  else if(S.scene==='name') drawName();
   else if(S.scene==='settings') drawSettings();
   else if(S.scene==='bye') drawBye();
   else if(S.scene==='dayintro') drawDayIntro();
@@ -3646,13 +4046,13 @@ function draw(){
   else if(S.scene==='workshop') drawWorkshop();
   else if(S.scene==='summary') drawSummary();
   else if(S.scene==='gameover') drawGameOver();
-  if(['title','slots','howto','settings','bye','gameover','ach','map'].indexOf(S.scene)<0) drawHUD();
+  if(['title','slots','howto','intro','name','settings','bye','gameover','ach','map'].indexOf(S.scene)<0) drawHUD();
   if(escOpen()) drawEscMenu();
   drawToasts(1/60);
-  if(S.flash>0.01){ g.globalAlpha=S.flash*0.45; g.fillStyle=S.flashCol; g.fillRect(0,0,W,H); g.globalAlpha=1; }
+  if(S.flash>0.01){ g.globalAlpha=S.flash*0.45; fillFull(S.flashCol); g.globalAlpha=1; }
   const vg=g.createRadialGradient(W/2,H/2,H*0.55,W/2,H/2,H*1.15);
   vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,'rgba(0,0,0,0.45)');
-  g.fillStyle=vg; g.fillRect(0,0,W,H);
+  fillFull(vg);
   g.restore();
 }
 

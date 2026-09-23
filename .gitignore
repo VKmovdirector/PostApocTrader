@@ -5,3 +5,5 @@ art-src/
 v12-build12.html
 # working copies identical to a numbered build
 *-before-*.html
+audio/*.wav
+audio/*.b64

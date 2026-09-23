@@ -15,7 +15,7 @@
 <script>
 "use strict";
 /* ================================================================
-   RUST & RATIONS  -  build 19 (pixel art; title screen, save slots, ESC menu; build 20 demand spread)
+   RUST & RATIONS  -  build 19 (pixel art) - build 21: Herald events
    A wasteland trading post. Sort the caravan, serve the wasteland.
    Single file, canvas 2D, design resolution 1280x760.
    ================================================================ */
@@ -1103,7 +1103,7 @@ function salePrice(cust,entry,haggle){
   const src = entry.src==='shelf' ? (entry.misfiled?0.5:1.0) : 0.6;
   const wantM = (cust.want.kind==='item'||(cust.want.kind==='bundle'&&cust.want.item)) ? 1.4 : 1.0;
   const patter = S.patterT>0 ? 1.5 : 1;
-  const it=entry.item, v=(it.base||it).v*RAR[Math.min(it.r||0,purseR(cust))].m*(it.crafted?CRAFT.mult:1);
+  const it=entry.item, v=(it.base||it).v*RAR[Math.min(it.r||0,purseR(cust))].m*(it.crafted?CRAFT.mult:1)*evMult(it.cat);
   return Math.max(1, Math.round(0.5*patter*v*src*wantM*cust.type.pay*priceMults().sign*comboMult()
                   *(1+(haggle||0))*(1+(entry.bonus||0))));
 }
@@ -1801,7 +1801,7 @@ function slotErase(n){ try{ localStorage.removeItem(slotKey(n)); }catch(e){} }
 function saveGame(){
   if(!S.slot) return;
   const d={v:1,t:Date.now(),day:S.day,caps:S.caps,up:S.up,hire:S.hire,actOwn:S.actOwn,wb:S.wb,wbDay:S.wbDay,unl:S.unl,mats:S.mats,
-    rig:S.rig,paperFresh:S.paperFresh,paperDay:S.paperDay,history:S.history,cr:S.cr,maxCombo:S.maxCombo,cslots:S.cslots,rows:S.rows,tut:TUT.done,wt:WT.done,
+    rig:S.rig,event:S.event,paperFresh:S.paperFresh,paperDay:S.paperDay,history:S.history,cr:S.cr,maxCombo:S.maxCombo,cslots:S.cslots,rows:S.rows,tut:TUT.done,wt:WT.done,
     tray:S.tray.map(iref), anvil:iref(S.anvil),
     shelves:S.shelves.map(sh=>({cat:sh.cat,slots:sh.slots.map(e=>e?{i:iref(e.item),m:e.misfiled?1:0}:null)})),
     counter:(S.counter||[]).map(e=>e?iref(e.item):null)};
@@ -1810,7 +1810,7 @@ function saveGame(){
 function loadGame(n){
   const d=slotPeek(n); if(!d) return false;
   startRun(); S.slot=n;
-  ['day','caps','hire','actOwn','wb','wbDay','unl','mats','rig','paperFresh','paperDay','history','cr','maxCombo','cslots','rows'].forEach(k=>{ if(d[k]!==undefined) S[k]=d[k]; });
+  ['day','caps','hire','actOwn','wb','wbDay','unl','mats','rig','event','paperFresh','paperDay','history','cr','maxCombo','cslots','rows'].forEach(k=>{ if(d[k]!==undefined) S[k]=d[k]; });
   Object.assign(S.up,d.up||{}); while(S.actOwn.length<ACTIVES.length) S.actOwn.push(false);
   TUT.done=d.tut||{}; TUT.active=null; WT.done=!!d.wt; WT.on=false;
   S.tray=(d.tray||[]).map(ideref); while(S.tray.length<17) S.tray.push(null); S.anvil=ideref(d.anvil);
@@ -1935,6 +1935,53 @@ function drawEscMenu(){
     {n:'EXIT',        sub:midDay?'today is not saved - the game saves on the town page':'saved', fn:()=>{ if(!midDay) saveGame(); toTitle(); }}
   ]);
   txt('esc or space resumes',W/2,y+h-16,9,C.dimmer,'center','normal');
+}
+
+/* ================================================================
+   EVENTS  -  every issue of the Herald (day 5, 9, 13 ...) prints one event; it moves
+   the price of ONE kind of goods for ONE day: the very next trading day.
+   ================================================================ */
+const EVENTS=[
+ /* weather */
+ {id:'dust',   type:'weather', cat:'meds', m:1.40, h:['DUST STORM','ROLLS IN'],      b:'A wall of grit is due off the flats by dawn. Lungs will rattle for days and the clinic has already hung out its lamp.', q:'"Wet rag over the mouth and pray," the ferryman advises.'},
+ {id:'heat',   type:'weather', cat:'food', m:1.50, h:['HEAT WAVE','BAKES TOWN'],     b:'The well rope came up dry twice yesterday. Anything that can be drunk or eaten cold will be fought over tomorrow.',          q:'"I would trade my boots for a clean bottle," said a drover.'},
+ {id:'cold',   type:'weather', cat:'food', m:1.35, h:['COLD SNAP','TONIGHT'],        b:'Frost on the pump handle for the first time this year. Folk eat more when they shiver, and they pay for it.',                q:'"Beans. Hot. Now." - overheard at the gate.'},
+ {id:'acid',   type:'weather', cat:'tech', m:1.40, h:['ACID RAIN','FORECAST'],       b:'Yellow cloud to the west. Every exposed wire and board in Dustwell will be pitted by noon; spares will be dear.',              q:'"Cover your terminals," warns the council engineer.'},
+ {id:'fair',   type:'weather', cat:'food', m:0.75, h:['FAIR SKIES','ALL WEEK'],      b:'Growers are bringing everything in at once while the weather holds. The strip will be knee-deep in produce.',                 q:'"You cannot give plums away," one grower complained.'},
+ /* military */
+ {id:'gangs',  type:'military',cat:'meds', m:1.50, h:['GANGS CLASH','AT THE RIDGE'], b:'Two bands met over the ridge road last night and neither backed down. The wounded are being carted toward town.',            q:'"Bring bandages, not questions," said a gate guard.'},
+ {id:'raiders',type:'military',cat:'guns', m:1.60, h:['RAIDERS MASS','UP NORTH'],    b:'Scouts count forty fires past the north wash. Every household is arming whoever can hold a gun the right way round.',          q:'"I will take anything that goes bang," said a farmer.'},
+ {id:'militia',type:'military',cat:'guns', m:1.40, h:['THE MILITIA','IS HIRING'],    b:'The council is paying a day-rate for wall duty, and recruits are told to bring their own iron.',                              q:'"No gun, no pay," the sergeant confirmed.'},
+ {id:'truce',  type:'military',cat:'guns', m:0.70, h:['CEASEFIRE','IS SIGNED'],      b:'The ridge bands shook on it at noon. Nobody expects it to last, but nobody is buying rifles while it does.',                  q:'"First quiet night in a month," said the gate guard.'},
+ {id:'convoy', type:'military',cat:'tech', m:1.35, h:['TECH CONVOY','AMBUSHED'],     b:'The monthly haul from Old Meridian never arrived. What is already on the shelves in town is all there is.',                  q:'"They took the lot, even the cables," a survivor said.'},
+ /* the town */
+ {id:'fever',  type:'town',    cat:'meds', m:1.60, h:['FEVER IN THE','SOUTH QUARTER'],b:'Eleven down in two days. The clinic is out of nearly everything and is sending runners to every stall on the strip.',       q:'"Pay what they ask," the doctor told her runners.'},
+ {id:'harvest',type:'town',    cat:'food', m:0.70, h:['THE HARVEST','COMES IN'],     b:'Carts are queued past the gate. Good news for bellies and bad news for anyone sitting on a shelf of tins.',                   q:'"Cheapest week of the year," said a cook.'},
+ {id:'tower',  type:'town',    cat:'food', m:1.45, h:['WATER TOWER','CRACKS'],       b:'A seam opened overnight and half the tank is in the street. Clean water is suddenly worth queueing for.',                     q:'"Patch it again," voted the council, again.'},
+ {id:'bunker', type:'town',    cat:'tech', m:0.70, h:['OLD BUNKER','CRACKED OPEN'],  b:'Scavengers broke into a sealed store under the rail yard. Crates of old machines are flooding the strip.',                    q:'"More boards than buyers," a scavenger shrugged.'},
+ {id:'power',  type:'town',    cat:'tech', m:1.50, h:['POWER OUT','AT THE WORKS'],   b:'The generator hall went dark at dusk. The foreman wants cells and boards by morning and is not counting chits.',               q:'"Whatever it costs," the foreman said.'},
+ {id:'quack',  type:'town',    cat:'meds', m:0.75, h:['QUACK DOCTOR','RUN OUT'],     b:'His whole stock was seized and is being handed out free at the gate. Honest medicine will be a hard sell for a day.',          q:'"Most of it is sugar," admitted a guard.'}
+];
+const EV_FILL=[['WELL ROPE REPLACED','Third one this season.'],['STRAY MULE FOUND','Answers to nothing.'],['COUNCIL MEETS AGAIN','No decision reached.'],
+ ['WALL PATROL DOUBLED','Volunteers wanted.'],['FERRY FARE GOES UP','Ferryman blames the mud.'],['LOST: ONE LEFT BOOT','Reward: the right one.'],
+ ['RAT KING SIGHTED','East drain, after dark.'],['NEW LAMP AT THE GATE','Burns till midnight.'],['STRIDER SEEN WALKING','Children delighted.']];
+const EV_ICON={
+ weather: ['..kkk...','.kkkkk..','kkkkkkk.','kkkkkkkk','.kkkkkk.','...kk...','..kk....','.kk.....'],
+ military:['k......k','.k....k.','..k..k..','...kk...','...kk...','..k..k..','.kk..kk.','kk....kk'],
+ town:    ['...kk...','..kkkk..','.kkkkkk.','.kkkkkk.','.kkkkkk.','kkkkkkkk','...kk...','...kk...']
+};
+const EV_SPR={}; Object.keys(EV_ICON).forEach(k=>EV_SPR[k]=spriteFrom(EV_ICON[k],{k:'#2a241c'}));
+function evPct(e){ const p=Math.round((e.m-1)*100); return (p>0?'+':'')+p+'%'; }
+function evToday(){ return (S.event&&S.event.day===S.day)?S.event:null; }
+function evTomorrow(){ return (S.event&&S.event.day===S.day+1)?S.event:null; }
+function evMult(cat){ const e=evToday(); return (e&&e.cat===cat)?e.m:1; }
+/* called when the Herald is about to be shown: tomorrow's event is fixed then, never rerolled */
+function rollEvent(){
+  const last=S.event, pool=EVENTS.filter(e=>!last||(e.id!==last.id&&e.cat!==last.cat));
+  const e=pick(pool);
+  const fill=EV_FILL.slice().sort(()=>Math.random()-0.5).slice(0,3);
+  S.event=Object.assign({},e,{day:S.day+1,fill:fill});
+  S.evLog=S.evLog||[];
 }
 
 /* ================================================================
@@ -2152,7 +2199,7 @@ function startRun(){
   TUT.done={};
   craftReset();
   UPGRADES.forEach(u=>S.up[u.id]=0);
-  S.paperFresh=false; S.paperDay=0;
+  S.paperFresh=false; S.paperDay=0; S.event=null; S.evGain=0;
   S.shelves=[]; makeShelves(); startDay();
   S.fresh=false; S.esc=false; S.paused=false;       /* a new run goes straight into day 1 (see beginRun) */
 }
@@ -2162,7 +2209,7 @@ function startDay(){
   S.shelves.forEach(sh=>sh.slots.forEach(e=>{ if(e){ e.arriving=0; e.anim=0; } }));
   S.custs=[]; S.flyers=[]; S.crates=[]; S.drag=null;
   makeShelves();
-  S.dayMis=0; S.dayFiled=0;
+  S.dayMis=0; S.dayFiled=0; S.evGain=0;
   S.dayTime=0; S.dayLen=dayLenFor(S.day); S.earned=0; S.sold=0; S.angry=0; S.spilled=0;
   S.combo=0; S.closing=false; S.overtime=0;
   S.catEarn={}; S.dayCombo=0; S.bulkSold=0; selClear();
@@ -2376,6 +2423,7 @@ function sellTo(c,drag){
   S.caps+=price; S.earned+=price; S.sold++;
   S.catEarn[drag.item.cat]=(S.catEarn[drag.item.cat]||0)+price;
   addCombo(); TUT.hag=drag.haggle||0;
+  { const em=evMult(drag.item.cat); if(em!==1) S.evGain=(S.evGain||0)+(price-Math.round(price/em)); }
   S.cr.soldR[drag.item.r||0]++;
   AST.sold=n0('sold')+1; AST.earned=n0('earned')+price; AST.maxSale=Math.max(n0('maxSale'),price);
   if(drag.src==='counter') AST.counterSales=n0('counterSales')+1;
@@ -2403,6 +2451,7 @@ function sellBundle(c,d){
   S.caps+=price; S.earned+=price; S.sold+=list.length; S.bulkSold++;       /* a bulk order counts every piece as sold */
   AST.sold=n0('sold')+list.length; AST.earned=n0('earned')+price; AST.maxSale=Math.max(n0('maxSale'),price);
   AST.bulk=n0('bulk')+1; if(list.length>=4) AST.bulk4=1; (AST.types=AST.types||{})[c.type.id]=1; achCheck();
+  { const em=evMult(list[0].item.cat); if(em!==1) S.evGain=(S.evGain||0)+(price-Math.round(price/em)); }
   const share=Math.round(price/list.length);
   list.forEach(b=>{ S.catEarn[b.item.cat]=(S.catEarn[b.item.cat]||0)+share; addCombo(); });
   c.mood=1; c.state='served'; c.st=0; c.line=null;
@@ -2762,6 +2811,8 @@ function drawShelves(){
     g.fillRect(r.x,r.y,r.w,SHELF_HEAD);
     blit(catBadge(sh.cat),r.x+4,r.y+7,1.5);
     txt(cat.name,r.x+22,r.y+SHELF_HEAD/2,16,cat.col);
+    { const e=evToday(); if(e&&e.cat===sh.cat){ const up=e.m>1, tx3=r.x+30+txtw(cat.name,16), tw3=txtw(evPct(e),11)+12;
+        g.fillStyle=up?C.green:C.red; g.fillRect(tx3,r.y+4,tw3,15); txt(evPct(e),tx3+tw3/2,r.y+12,11,'#14100c','center'); } }
     let filled=0; sh.slots.forEach(s=>{ if(s) filled++; });
     txt(filled+'/4',r.x+r.w-6,r.y+SHELF_HEAD/2,14,filled===4?C.gold:C.dimmer,'right');
     if(filled===0&&freeLabel(i)) txt('click to relabel',r.x+r.w-44,r.y+SHELF_HEAD/2,12,C.dimmer,'right','normal');
@@ -3108,6 +3159,9 @@ function drawDayIntro(){
   txt('rent due at dusk: '+rentFor(S.day)+'c',W/2,y+88,18,C.gold,'center');
   txt('caravan every '+Math.round(crateEvery(S.day))+'s, '+(crateSize(S.day)>3?'3-'+crateSize(S.day):'3')+' a crate  ·  customer every '+custEvery(S.day).toFixed(1)+'s',
       W/2,y+116,12,C.dim,'center','normal');
+  { const e=evToday(); if(e){ const up=e.m>1; plate(x+40,y+246,w-80,48,up?'#1e2a18':'#2a1a16',up?C.green:C.red);
+      txt('TODAY: '+CATS[e.cat].name+' PRICES '+evPct(e),W/2,y+262,15,up?C.green:C.red,'center');
+      txt(e.h.join(' ')+'  ·  the Herald',W/2,y+281,10,C.dim,'center','normal'); } }
   if(S.day===3) txt('NEW: bulk orders - buyers who want several at once.',W/2,y+146,14,'#e8b13c','center');
   else if(S.day===5) txt('NEW: the bad ones come to town.',W/2,y+146,14,C.red,'center');
   else if(S.day>1) txt('The road is busier. Patience is shorter.',W/2,y+146,13,C.dim,'center','normal');
@@ -3137,7 +3191,7 @@ function drawDayIntro(){
 function paperDay(d){ return d>=5&&(d-5)%4===0; }          /* the Herald prints on day 5, 9, 13 ... */
 function afterPaper(){ if(S.day%5===0&&S.history.length){ S.scene='ledger'; S.sceneT=0; saveGame(); } else toHub(); }
 /* the Herald is delivered, not shoved in your face: it waits behind a button on the town page */
-function afterReport(){ if(paperDay(S.day)){ S.paperFresh=true; S.paperDay=S.day; } afterPaper(); }
+function afterReport(){ if(paperDay(S.day)){ rollEvent(); S.paperFresh=true; S.paperDay=S.day; } afterPaper(); }
 function leftovers(){
   let n=0,v=0;
   S.shelves.forEach(sh=>sh.slots.forEach(e=>{ if(e){ n++; v+=scrapValue(e.item); } }));
@@ -3176,6 +3230,7 @@ function drawReport(){
   if(rp.bulk>0) rows.push(['  of which bulk orders',rp.bulk+'']);
   rows.push(['Walked out',rp.angry+''],['Spilled',rp.spilled+''],['Best streak','x'+rp.combo]);
   if(rp.wage>0&&hh) rows.push([hh.who+"'s wage",'-'+rp.wage+'c']);
+  { const e=evToday(); if(e) rows.push(['Herald: '+CATS[e.cat].name+' '+evPct(e),(S.evGain>=0?'+':'')+(S.evGain||0)+'c']); }
   if(rp.mats>0) rows.push(['Materials (already paid)',rp.mats+'c']);
   rows.push(['Rent','-'+rp.rent+'c']);
   let yy=y+100;
@@ -3277,6 +3332,7 @@ function drawHub(){
   const x=70,y=78,w=W-140,h=H-98;
   plate(x,y,w,h,'#1a1410','#6b5540','#8a6f50');
   txt('DUSTWELL',x+30,y+36,28,C.gold);
+  { const e=S.paperFresh?null:evTomorrow(); if(e){ const up=e.m>1; txt('TOMORROW: '+CATS[e.cat].name+' '+evPct(e)+'  ·  '+e.h.join(' '),x+w-30,y+62,12,up?C.green:C.red,'right'); } }
   txt(S.fresh?'before your first day':('the night after day '+S.day),x+30,y+64,12,C.dim,'left','normal');
   txt('purse '+S.caps+'c   ·   rent '+(S.fresh?'tonight ':'tomorrow ')+rentFor(S.fresh?S.day:S.day+1)+'c',x+w-30,y+36,14,C.ink,'right');
   /* the town, in the middle */
@@ -3567,17 +3623,20 @@ function drawPaper(){
   blit(PAPER_IMG,ix,iy,3);
   txt('The east road, yesterday.',ix,iy+54*3+16,11,FADE,'left','normal');
   const tx2=ix+96*3+26, tw2=x+w-34-tx2;
-  txt('MEDS PRICES',tx2,y+134,30,INK,'left');
-  txt('GO UP!',tx2,y+168,30,INK,'left');
-  g.fillStyle=INK; g.fillRect(tx2,y+184,tw2,2);
-  wrapText('Two caravans turned back at the ridge this week and the clinic is rationing again. Traders on the strip report mend shots moving at twice the usual ask.',
-           tx2,y+204,tw2,17,12,INK);
-  wrapText('"Folk will pay what folk must," said one stallholder, who declined to give a name.',
-           tx2,y+286,tw2,17,12,FADE);
+  const ev=S.event||EVENTS[0];
+  blit(EV_SPR[ev.type],tx2+tw2-34,y+112,4);
+  txt(ev.type.toUpperCase(),tx2,y+114,10,FADE,'left','normal');
+  txt(ev.h[0],tx2,y+142,28,INK,'left');
+  txt(ev.h[1],tx2,y+174,28,INK,'left');
+  g.fillStyle=INK; g.fillRect(tx2,y+192,tw2,2);
+  let py2=wrapText(ev.b,tx2,y+212,tw2,16,11,INK);
+  wrapText(ev.q,tx2,py2+22,tw2,16,11,FADE);
+  { const up=ev.m>1, stale=ev.day<=S.day;               /* the part the trader actually needs */
+    g.fillStyle=INK; g.fillRect(tx2,y+318,tw2,44); g.fillStyle='#d8cdb4'; g.fillRect(tx2+3,y+321,tw2-6,38);
+    txt(stale?('DAY '+ev.day):'TOMORROW',tx2+12,y+340,10,FADE,'left','normal');
+    txt(CATS[ev.cat].name+' PRICES '+(up?'UP ':'DOWN ')+evPct(ev),tx2+tw2-12,y+340,15,INK,'right'); }
   g.fillStyle=FADE; g.fillRect(x+30,y+372,w-60,1);
-  const cols=[['RAIDERS SEEN NORTH','Three trucks, no colours flown.'],
-              ['WATER TOWER HOLDS','Council votes to patch it again.'],
-              ['ASH PLUM GLUT','Growers say the crop came early.']];
+  const cols=(S.event&&S.event.fill)||EV_FILL.slice(0,3);
   const colw=(w-68)/3;
   cols.forEach((c2,i)=>{
     const cx2=x+34+i*colw;

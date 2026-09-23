@@ -1,4 +1,4 @@
-# RUST & RATIONS — design notes (build 20)
+# RUST & RATIONS — design notes (build 27)
 
 A trading-post game. You run the only stall in a dust-blown town. Caravans dump
 mixed salvage on your counter, wanderers queue at the window, and rent is due
@@ -817,7 +817,7 @@ real cost of crafting in the main game.
 | 7 | **CONTROL-click (or right-click) scraps an item** on the counter or a shelf, same 25 % as the barrel; at the bench it returns half the materials. Day-1 lesson gained a step after the haggle sale: tin cans land on the counter, scrap them (either way), then the closing card. |
 | 8, 9 | Caravan goods after **day 10: 5 % Rare**; after **day 15: also 1 % Epic**. Purse pips show from day 11 even without the bench. The Back Room still conjures Commons. |
 | 12 | No JUNK tab at the bench. |
-| 13 | The Dust Herald prints on **day 5, 9, 13, 17…** only; other nights go straight to the ledger/Fixer. |
+| 13 | The Dust Herald is printed at dusk of **day 4, 8, 12…** and read the next morning (day 5, 9, 13…) only; other nights go straight to the ledger/Fixer. |
 
 ### (Superseded by build 14) Warning: at these material prices the bench cannot pay for itself
 Goods sell for about half their value, so:
@@ -1038,3 +1038,285 @@ Exact-item (≈30-35 %) and bulk (≈15 %) odds, prices, patience and tiers are 
 customers are scripted and unaffected. Measured over 20,000 arrivals each on days 2, 6 and 15:
 0 repeated kinds in the queue, 0 twins, 0 back-to-back repeats, and each kind gets 24-27 % of
 requests.
+
+
+---
+
+## Appendix — events test (`events-demo.html`, separate rig, main game untouched)
+
+**Rule being tested:** the Dust Herald prints one event; the event moves the sale price of
+**one kind of goods for one day — the next trading day**. It is announced the night before and
+never rerolled, so it is a forecast to plan around, not a surprise.
+
+16 events in three families (`EVENTS` table — one row each: family, kind, multiplier, headline,
+story, quote):
+
+| Family | Event | Effect |
+|---|---|---|
+| Weather | Dust storm rolls in | MEDS +40 % |
+| | Heat wave bakes town | CHOW +50 % |
+| | Cold snap tonight | CHOW +35 % |
+| | Acid rain forecast | TECH +40 % |
+| | Fair skies all week | CHOW −25 % |
+| Military | Gangs clash at the ridge | MEDS +50 % |
+| | Raiders mass up north | ARMS +60 % |
+| | The militia is hiring | ARMS +40 % |
+| | Ceasefire is signed | ARMS −30 % |
+| | Tech convoy ambushed | TECH +35 % |
+| The town | Fever in the south quarter | MEDS +60 % |
+| | The harvest comes in | CHOW −30 % |
+| | Water tower cracks | CHOW +45 % |
+| | Old bunker cracked open | TECH −30 % |
+| | Power out at the works | TECH +50 % |
+| | Quack doctor run out | MEDS −25 % |
+
+Never the same event twice running, never the same kind two papers running.
+
+**Where the player sees it:** the Herald (family stamp, two-line headline, story, quote, and a
+boxed `TOMORROW · MEDS PRICES UP +50%`; the three filler columns are drawn from a joke pool);
+the town page (`TOMORROW: MEDS +50% · GANGS CLASH AT THE RIDGE`); the day card (`TODAY: …`);
+a green/red `+50%` tag on that shelf's sign all day; every price estimate and sale; and a dusk
+report row `Herald: MEDS +50%   +47c` showing what the event was worth.
+
+**Rig switch** on the title screen: HERALD PRINTS EVERY NIGHT (default, so an event can be
+tested every day) or DAY 5, 9, 13… (as in the game). The rig keeps its own saves, options and
+achievements (`rustrations.events.*`). Verified: +50 % meds sells a Mend Shot for 24c instead
+of 16c while other kinds are unchanged; 12 nights of papers with no repeated kind; the event is
+written into the save; zero errors.
+
+**The Herald is a button, not an interruption (build 20b and the events rig).** The paper no
+longer opens by itself after dusk. It is delivered to the town page: a fourth door on the right,
+**THE HERALD**, greyed with "no paper yet" until the first issue, and flagged with a blinking red
+**NEW** tab and a gold frame when a fresh one has arrived. Reading it clears the flag; after that
+the button stays as "day N's paper" so it can be re-read. FOLD IT AWAY and Esc return to town.
+The flag and issue day are saved. In the events rig the `TOMORROW: …` reminder on the town page
+only appears once the paper has been read — the forecast is a reward for reading it.
+
+
+---
+
+## Appendix — build 21: Herald events are in the main game
+
+The events rig is merged as tested (see the events appendix above for the table of 16 events).
+In the game the Herald is printed at dusk of **day 4, 8, 12, …** (read on 5, 9, 13, …; build 23 moved it a day earlier); each issue announces one event that moves
+the sale price of one kind of goods **on the next trading day only** (day 6, 10, 14, …), then
+prices return to normal. The paper arrives behind the THE HERALD button with its NEW flag; the
+`TOMORROW: …` reminder on the town page appears once it has been read; the day card, the shelf
+tag and the dusk-report row (`Herald: CHOW +45%  +Nc`) show it on the day. Re-opening an old
+issue shows `DAY n` in the box instead of TOMORROW. The event is saved with the slot.
+Verified over 14 days: events on nights 5 / 9 / 13, only the named kind changes and only for
+one day (e.g. CHOW 6c → 8c on day 6, back to 6c on day 7), save and load keep the event, no errors.
+
+## Appendix — build 22: the town page is the next morning, an intro, per-slot progress
+
+Nine changes from one play session.
+
+**Progress belongs to the slot.** Achievements (`AST`, `ACH_GOT`) and the stall's look
+(`S.worn`, `S.owned`) are saved inside the slot record (`ach`, `look`; save `v:2`) instead of
+the shared `rustrations.ach` / `rustrations.look` keys, which are removed at boot. NEW GAME
+calls `achReset()` and `lookReset()`, so a fresh run starts at 0/50 with the default coat and
+awning; CONTINUE restores whatever that slot had. The slot cards show the achievement count.
+The title line keeps only "best run" (a lifetime number, still global).
+
+**A bulk order takes exactly what was asked.** `bundleFits` demanded *at least* n pieces, so four
+Mend Shots filled the day-3 "I need three" order. It now demands exactly n; the buyer answers
+"I said 3, not 4." and the counter on the card turns red past the target. The lesson advances
+only on exactly three marked.
+
+**No pause button.** Esc (or space) still pauses and opens the menu; the top-right of the HUD
+shows an ESC keycap with "MENU" instead.
+
+**END DAY appears at the end.** `lastCall()` is true once the time left is at most two customer
+intervals (`custEvery(day)×2`, i.e. the last two buyers are on the road) or the day is closing.
+Only then does the hint panel under the queue turn into a LAST CALL panel with a big blinking
+END DAY button; it disappears once pressed (`S.shut`). Before that the day cannot be cut short.
+
+**Three towns.** The map keeps Dustwell, Saltpan and Cinder Gap (routes 0–1, 1–2). Old Meridian
+and Last Pump are gone from the map and from the convoy headline.
+
+**The town page is the next morning.** Closing the dusk report now advances `S.day`
+(`afterReport`), so on the town page `S.day` is the day about to be traded: "morning of day 6",
+"rent tonight 107c", OPEN THE STALL · DAY 6, `TODAY: CHOW +45%` once the paper has been read,
+and the Herald's box says TODAY (or DAY n for an old issue). `nextDay()`/`hubOpenDay()` no longer
+increment; `effDay()` is `S.day`; the workbench purchase stamps `wbDay=S.day`. Build-21 saves
+(which stored the finished day) are migrated on load (`day+1`). The city image is a sunrise
+(`buildCity('dawn')`: sun rising behind the wall with rays, birds, lamps and windows out, a slow
+breathing glow); `buildCity('dusk')` keeps the old look for the intro. Every door has an 8×8
+pixel icon (`HUB_PX`: wrench, hammer, walker, hat, book, compass, trophy, newspaper) via `door()`.
+
+**NEW AT THE FIXER** moved off the day card to the foot of the town page (purple plate with
+"1 colour · 1 texture", or a dim "nothing new at the Fixer this morning").
+
+**Bigger perk rail, hung from the counter.** `RAIL` is 150 wide; passive tiles 40 px (3 per row),
+active cards 54 px tall on a 70 px pitch with a 34×36 keycap and a 4× icon. The rail is laid out
+bottom-up so its last card ends level with the bottom of THE COUNTER whatever is owned; a running
+effect (PATTER/STEADY/SIGNAL) sits just above the rail.
+
+**Intro (NES style).** OK on the how-to card opens four cards on black, each with a 600×320 pixel
+image and a line typed under it (18 chars/s, first click finishes the line, next click turns the
+page; Enter/space do the same, Esc or SKIP jumps in): 1 the town at dusk — "DUSTWELL. THE EDGE OF
+THE DUST."; 2 a walking silhouette against the sunrise — "It's a new dawn..."; 3 a rusty key in an
+open hand — "And a new beginning for me..."; 4 the opened stall with the merchant — "Time to trade
+goods!". The last click calls `beginRun()` → day 1 and its lesson.
+
+Verified: four pieces never fill a three-piece order (three yes, two no, mixed no); the day-3
+lesson still passes with exactly three; new game → 0 achievements and default look, loading slot 1
+brings back its 1 achievement, 7 sold and the bought coat; a v1 save at day 6 loads as day 7; dusk
+on day 5 → ledger → town page as day 6 with the event marked TODAY; 14-day bot run (events on days
+6, 10, 14, LAST CALL seen every day, no errors).
+
+## Appendix — build 23: name screen, last-call END DAY, paper pictures, edge to edge
+
+Ten changes from the next play session, plus one bug found on the way.
+
+**Stall & Looks.** The morning notice now reads `NEW AT STALL & LOOKS: …` (that is where the wardrobe
+is bought), and the STALL & LOOKS door gets the same blinking red NEW tab and gold frame as the Herald
+whenever a morning brings new wardrobe items (`S.looksFresh`, set in `afterReport`, cleared when the
+door is opened, saved in the slot).
+
+**END DAY waits for the last buyer.** `lastCall()` is true once nobody else can arrive (the next timed
+customer would land after closing and the half-day rush is spent, or the day is closing) *and* nobody is
+still walking in. In a 14-day bot run it appeared between 84 and 91 s into the 90 s day.
+
+**Herald a day earlier.** Printed at dusk of day 4, 8, 12…, so it is waiting on the town page on the
+morning of day 5, 9, 13… and its event applies that same day.
+
+**A picture that fits the story.** `buildPaperImg(ev)` (cached per story and direction) draws a backdrop
+by family — weather: sun with rays (heat wave, fair skies), cloud bank with streaks (dust storm, acid
+rain), pale sky with flurries (cold snap); military: a ridge with fires and smoke, or one fire and a
+white flag for the ceasefire; town: the wall and gate — and the goods in front: tins and a crate, a med
+kit and bottles, rifles on sandbags, or a power cell, board and aerial. Gluts ("prices down") show the
+goods twice. Each story has its own caption (`pic`).
+
+**Lighter caravans.** From day 4 a crate rolls `2..max` instead of `3..max` (`crateLo`): −11 % to −14 %
+stock on average; days 1–3 unchanged. The day card prints the real range.
+
+**New-game order.** Slot → intro → **name screen** → how-to card (OK) → day 1 lesson. The name screen
+types "Let's give my new place a proper name:", shows a gold field (10 characters, letters, digits,
+space, `' & . -`) and a rusty pixel keyboard (`keycap` state `'rust'`) whose keys can be clicked; the real
+keyboard works too; Enter or THAT'S THE NAME confirms (disabled while empty; the sign defaults to TRADER).
+Achievements and the look are reset when the slot is chosen, so the typed name survives to the run.
+
+**Bug fixed:** a sign renamed on the Looks screen was never saved — the name was typed into `S.look` while
+the slot serialises `S.worn`. `setSign()` now writes both.
+
+**Intro art.** The card-2 silhouette is a scavenger (hood with a goggle bump, pack with a bedroll, a staff
+in the leading hand, ragged hem, canteen) instead of a brimmed hat; card 4 is a new `buildIntroShop()`
+picture — a tin-and-plank shack with a patched awning, open shutters, a roof sign reading OPEN, an aerial,
+a bare bulb, barrel, crates and sandbags — with nobody in it.
+
+**Edge to edge.** `resize()` keeps the extra design-space margin (`EXX`, `EXY`) and `draw()` clips to the
+whole window. `drawScene` extends the sky and ground bands into the side margins from a one-column
+`SCENE_EDGE` (the wrecked car and the flag pole are not repeated); every full-screen fill (`dim()`, the
+title, slots, menus, achievements, intro, name screen, HUD bar, flash and vignette) uses `fillFull()`.
+The UI and click mapping stay inside the 1280×760 frame.
+
+Verified: new game → intro → name (11th character rejected, Enter on empty ignored, keyboard typing) →
+how-to → day 1 with the lesson; sign equal in `S.look`/`S.worn` and back after save/load; `paperDay` true
+for 4/8/12 and `afterReport` on day 4 gives an event for day 5; crates at day 2 always 3, at day 10 2–6
+with mean 4.1; `looksFresh` set after day 1's dusk and saved; all 16 stories draw without error; wide
+(1700×760) and tall (1280×1000) windows show no black bars, no repeated props; 14-day bot run with events
+on days 5, 9, 13 and zero errors.
+
+**Build 23b.** The side strips are tucked 8 px under the scene so a fractional window scale cannot open a
+seam at the frame edge. The town page is a page of its own now: an opaque plate over the whole window,
+nothing of the stall showing through. THE FIXER is marked NEW (`S.fixerFresh`, saved) on the morning of
+day 2 — the first morning it can be visited — and the foot of the page lists every notice on its own line
+(`NEW AT THE FIXER: perks and active skills are for sale`, `NEW AT STALL & LOOKS: …`), or "nothing new in
+town this morning". One `newTab()` helper draws the tab and frame for the Fixer, Stall & Looks and the Herald.
+
+## Appendix — build 24: workshop counter, one per craft, Transport from day 15
+
+- **Transport** is a locked door ("opens on day 15", `RIG_DAY`) until day 15; then it is plain
+  `TRANSPORT`, marked NEW that morning with a notice at the foot of the page. The Strider counter
+  stays on the map and in the yard.
+- **Day-3 lesson:** the shelf held four lesson meds and the leftover was taken back after the sale,
+  which read as a piece vanishing. The lesson now tops the meds shelf up to exactly three (counting the
+  player's own meds) and keeps nothing back; only the day-1 props (the cans and the sample) are cleared.
+- **Caravans on each other's heels:** a caravan arriving within 15 s of the previous one carries at most
+  3 pieces (`CRATE_GAP`, `S.lastCrateT`); the BIG CARAVAN waits until 15 s have passed instead of landing
+  on the tail of a normal one.
+- **Town page:** the purse / rent line is gone (the HUD shows both).
+- **Refining follows the recipe calendar:** an object whose recipe has not opened yet cannot be refined
+  either (`canUpgrade` → `'recipe'`; the anvil says "NOT YET … opens in N days" instead of listing a bill).
+- **One per craft:** every recipe yields one piece (the pairs for cheap goods are gone; at ×8 they pay
+  anyway). Scrap refunds still follow the recipe.
+- **The counter in the workshop:** under THE SHELVES sits UNSORTED - THE COUNTER with the pieces that will
+  be on the counter at dawn; they can be dragged to a shelf, the anvil or the tray, scrapped (ctrl-click
+  or the barrel), and goods can be dropped back onto it. Shelf rows are a little shorter to make room.
+
+Verified: the lesson stocks three, sells three, leaves none; a second caravan 5 s after the first never
+carries more than 3 (300 trials); the big caravan is held while the gap is under 15 s and lands once it
+passes; a closed recipe on the anvil reports `recipe`; all 15 recipes yield 1; workshop and town page
+screenshots; 16-day bot run without errors.
+
+**Build 24b.** The 3-piece cap and the big-caravan hold are replaced by a proper rest: once a crate has
+unloaded, the road rests 2 s per piece it carried (6 s at least: 3 pieces 6 s, 6 pieces 12 s, the big 12
+pieces 24 s) and nothing lands during the rest (`S.crateRest`, `crateRestFor`, `crateResting`). A caravan
+that falls due meanwhile no longer queues up (`S.crateDue` is 0 or 1). The NEXT CARAVAN panel says
+"on the road · Ns" while a due caravan waits out the rest. 16-day bot: no crate ever landed inside the rest
+after the previous one, about 8.7 crates a day instead of 10.5 (−17 %), takings on days 10–16 within the
+build-24 range.
+
+## Appendix — build 25: a music loop, and 20 % fewer goods off the road
+
+**Fewer goods.** Measured by the 16-day bot as pieces delivered per day. The caravan timer alone could not
+do it (the rest rule and the one fixed big caravan dominate: ×1.25 on the timer gave −9 %, ×1.45 only −14 %),
+so the cut is on the crates: every crate carries `round(n × 0.8)` (`CRATE_LOAD`, never below 3 on days 1–3
+or 2 after), and the timer is stretched ×1.15 (`CRATE_RATE`). Result 28.5 pieces a day against 35.1
+(−19 %; ×1.2 on the timer gave −25 %). Days 1–3 stay near 26 a day because of the floor. The day card prints
+the real range after the cut (`crateLoad`). Bot takings held (485c/day vs 471c).
+
+**Music.** `Music` (after `Snd`) plays an 8-bar loop at 84 bpm built from oscillators and noise: a
+triangle bass walking Am – F – C – G, a thin detuned sawtooth pad under a 520 Hz low-pass, a plucked square
+lead in A minor with a dotted-eighth echo, a sine kick on 1 and the "and" of 3, a bandpass-noise snare on 3
+and a quiet shaker. Lookahead scheduler (110 ms) on the audio clock. It starts on the first click (the same
+gesture that opens the audio context), fades in over two seconds, follows the VOLUME setting and stops when
+SOUND is off or the new **MUSIC** row in Settings (row 2) is OFF (`OPT.music`, saved with the options).
+
+## Appendix — build 26: cut scenes, Adaptability, robo-hand lvl 2, the last buyer wants stock
+
+- **Quick Trade** is tested apart, in `quicktrade-demo.html` (see below), not in the main game yet.
+- **Sorting Robo-Hand level 2** files two pieces per pass (every 9 s) instead of running twice as fast.
+- **Adaptability** (passive, 800c / 1600c). On a Herald day the road leans: 5 (level 2: 10) of every
+  100 pieces move toward the kind whose price is up, or away from the kind whose price is down, so that
+  kind's share of caravan goods goes from 25 % to 30 % (or 35 %), or down to 20 % (15 %). Measured over
+  20,000 rolls: up 25.1 → 29.6 → 34.8 %, down 24.9 → 20.3 → 14.6 %. `rollCat()` in `rollItem`.
+- **Cut scenes.** The intro machinery is now a reel player (`playReel(cards,end)`, `S.reel`). Two new
+  reels play on the way into town: after day 8 (bench under a lamp / the dust wall with lightning / the
+  town half-buried) and after day 14 (the road out with a signpost ("moving to another town on day 30") / the Strider still a blueprint in the
+  yard / gear, wrench and sparks). Each card is a 150×80 pixel picture (`REEL_BUILD`), typed text, SKIP.
+- **The streak dies at dusk** (`S.combo=0` in `endDay`), so the town page and the next morning start clean.
+- **Materials −15 %** (Scrap/Cloth/Grain 14, Timber/Herbs/Glass 27, Chem 41, Wire 54, Fine Parts 122,
+  Relic Core 326). **Strider parts −25 %** (2250 / 3000 / 1875 / 1500).
+- **The day's last buyer** (the timed arrival after which no other would land before closing) always asks
+  for an exact piece that is on a shelf or the counter at that moment, from a type that buys that kind.
+- Actives are no longer hard-coded to six (`ACTIVES.map(...)`, keys 1..N), ready for a seventh.
+
+### Quick Trade demo (`quicktrade-demo.html`)
+A seventh active, key 7, 900c, 45 s rest, owned from the start (600c to begin, own save slots
+`rustrations.qt.*`). Press 7: the day pauses and every plain piece (not rare, epic or hand-made) on a
+shelf or the counter glows; click one, and a board lists every plain piece of every kind with the
+difference in price: a dearer piece costs the difference, a cheaper one is a free swap (no refund). The
+piece is replaced where it stands (on the wrong shelf it is misfiled). The rest only starts once a swap is
+made; Esc, a click off the board or CANCEL backs out for free. Verified: pick → choose → swap pays the
+difference and starts the rest; a rare piece is refused; the day clock is frozen while choosing.
+
+## Appendix — build 27: Quick Trade in the game, and the tape
+
+**Quick Trade** (active 7, 900c, 45 s rest) is in the main game exactly as tested in the rig: the day
+pauses, plain pieces glow, a board offers every plain piece of every kind at the difference in price, the
+rest starts only when a swap is made. Applied with `tools/apply-quicktrade.py` (the rig's module minus its
+demo-only lines). Saves pad `actOwn` to seven, so old slots load fine.
+
+**The tape.** The user's track (`Hijskraanstraat 2.wav`, 158 s, 48 kHz stereo) is cut to its main body,
+47.5 s → 133 s, with the last 2.5 s blended into the head by an equal-power crossfade so the loop has no
+seam (83 s), normalised to −1 dB, encoded as AAC 64 kbps in an MP4 box (`audio/dust-tape-loop.m4a`,
+681 KB) and embedded in the page as a base64 data URI (`MUSIC_TRACK`, 908 KB; the page is now 1.17 MB).
+The source WAV is git-ignored. In the game it is decoded once, on the first click, into an AudioBuffer and
+played by a looping buffer source through the music gain: gapless, and it follows VOLUME and SOUND.
+
+**Settings → MUSIC** cycles OFF → CHIP LOOP (the loop made on the spot) → DUST TAPE (the recording;
+default). `OPT.music` is now a string; a build-25 yes/no is migrated.
+
+**Build 27b/c.** The day-15 cut scene says day 30. Caravan rarity from day 16: common 88 %, rare 10 %, epic 2 % (days 11–15 stay 95 / 5 / 0).
